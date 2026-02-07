@@ -1,158 +1,147 @@
 """
-Model Download Operator - UI Layer Only
+Simple Model Download - Subprocess Approach
 
-Uses DownloadManager from core module for actual download logic.
-Implements proper Modal Operator pattern for non-blocking UI.
+No UI, no modal operators, just terminal output.
+Uses subprocess to avoid GIL issues completely.
 """
 
 import bpy
-import threading
-from typing import Optional
+import subprocess
+import sys
+import os
 from bpy.types import Operator
-from ..core.download_manager import (
-    DownloadManager,
-    DownloadStatus,
-    create_download_manager,
-)
 from ..utils import file_utils
 
 
 class SUBTITLE_OT_download_model(Operator):
-    """Download Whisper model with real progress tracking"""
+    """Download model in subprocess - terminal output only"""
 
     bl_idname = "subtitle.download_model"
     bl_label = "Download Model"
-    bl_description = "Download the selected Whisper model"
-    bl_options = {"REGISTER", "UNDO"}
-
-    # Modal operator state (class variables to persist across modal calls)
-    _timer = None
-    _download_manager = None
-    _thread = None
-    _model_name = None
-
-    def modal(self, context, event):
-        """
-        Called repeatedly by Blender's event loop.
-        CRITICAL: Must return quickly, do heavy work in thread.
-        """
-        props = context.scene.subtitle_editor
-
-        if event.type == "TIMER":
-            # Poll download manager for progress (fast operation)
-            if self._download_manager:
-                progress = self._download_manager.get_progress()
-
-                # Update UI properties
-                props.model_download_progress = progress.percentage
-                props.model_download_status = progress.message
-
-                # Update Blender's built-in progress bar
-                wm = context.window_manager
-                wm.progress_update(int(progress.percentage * 100))
-
-                # Check if complete
-                if progress.status in [
-                    DownloadStatus.COMPLETE,
-                    DownloadStatus.ERROR,
-                    DownloadStatus.CANCELLED,
-                ]:
-                    # Show final message
-                    if progress.status == DownloadStatus.COMPLETE:
-                        self.report({"INFO"}, progress.message)
-                    elif progress.status == DownloadStatus.ERROR:
-                        self.report({"ERROR"}, progress.message)
-
-                    # End modal operator
-                    self.cancel(context)
-                    return {"FINISHED"}
-
-            # CRITICAL: Force UI redraw (from technical-domain.md)
-            for area in context.screen.areas:
-                area.tag_redraw()
-
-        # CRITICAL: Return PASS_THROUGH to keep Blender responsive
-        # (from technical-domain.md)
-        return {"PASS_THROUGH"}
+    bl_description = "Download Whisper model (output in terminal)"
+    bl_options = {"REGISTER"}
 
     def execute(self, context):
-        """
-        Start modal operator.
-        Sets up timer, modal handler, and background thread.
-        """
         props = context.scene.subtitle_editor
-        self._model_name = props.model
+        model_name = props.model
 
-        # Check faster-whisper available
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            self.report({"ERROR"}, "faster-whisper not installed")
-            return {"CANCELLED"}
-
-        # Initialize state
-        props.is_downloading_model = True
-        props.model_download_progress = 0.0
-        props.model_download_status = f"Starting download of {self._model_name}..."
-
-        # Create download manager (dependency injection)
+        # Get cache directory
         cache_dir = file_utils.get_addon_models_dir()
-        self._download_manager = create_download_manager(cache_dir)
 
-        # Get optional HF token from addon preferences
+        # Get optional HF token
         preferences = context.preferences.addons.get("subtitle_editor")
         hf_token = None
         if preferences and hasattr(preferences, "preferences"):
             hf_token = preferences.preferences.hf_token or None
 
-        # Start background thread (heavy work here)
-        self._thread = threading.Thread(
-            target=self._download_worker, args=(self._model_name, hf_token)
+        print(f"\n{'=' * 60}")
+        print(f"[Subtitle Editor] Starting download: {model_name}")
+        print(f"[Subtitle Editor] Cache directory: {cache_dir}")
+        print(
+            f"[Subtitle Editor] HF Token: {'Set' if hf_token else 'Not set (anonymous)'}"
         )
-        self._thread.daemon = True
-        self._thread.start()
+        print(f"{'=' * 60}\n")
 
-        # Setup modal operator (from technical-domain.md)
-        wm = context.window_manager
-        wm.progress_begin(0, 100)
-        self._timer = wm.event_timer_add(0.1, window=context.window)
-        wm.modal_handler_add(self)
+        # Create download script to run in subprocess
+        script_content = f'''
+import sys
+sys.path.insert(0, "{os.path.dirname(__file__)}/../..")
 
-        # CRITICAL: Return RUNNING_MODAL (from technical-domain.md)
-        return {"RUNNING_MODAL"}
+from huggingface_hub import snapshot_download
+import os
 
-    def cancel(self, context):
-        """
-        Clean up when operator finishes or is cancelled.
-        CRITICAL: Always remove timer to prevent memory leaks.
-        """
-        props = context.scene.subtitle_editor
+model_name = "{model_name}"
+cache_dir = "{cache_dir}"
+token = {repr(hf_token)}
 
-        # Cancel download if running
-        if self._download_manager:
-            self._download_manager.cancel()
+repo_map = {{
+    "tiny": "Systran/faster-whisper-tiny",
+    "tiny.en": "Systran/faster-whisper-tiny.en", 
+    "base": "Systran/faster-whisper-base",
+    "base.en": "Systran/faster-whisper-base.en",
+    "small": "Systran/faster-whisper-small",
+    "small.en": "Systran/faster-whisper-small.en",
+    "medium": "Systran/faster-whisper-medium",
+    "medium.en": "Systran/faster-whisper-medium.en",
+    "large-v1": "Systran/faster-whisper-large-v1",
+    "large-v2": "Systran/faster-whisper-large-v2", 
+    "large-v3": "Systran/faster-whisper-large-v3",
+    "large": "Systran/faster-whisper-large-v3",
+    "distil-small.en": "Systran/faster-distil-whisper-small.en",
+    "distil-medium.en": "Systran/faster-distil-whisper-medium.en",
+    "distil-large-v2": "Systran/faster-distil-whisper-large-v2",
+    "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
+    "distil-large-v3.5": "distil-whisper/distil-large-v3.5-ct2",
+    "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+    "turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+}}
 
-        # Remove timer (from technical-domain.md)
-        if self._timer:
-            wm = context.window_manager
-            wm.event_timer_remove(self._timer)
-            wm.progress_end()
-            self._timer = None
+repo_id = repo_map.get(model_name, f"Systran/faster-whisper-{{model_name}}")
 
-        props.is_downloading_model = False
+print(f"[Download] Starting download of {{model_name}} from {{repo_id}}")
+print(f"[Download] Cache: {{cache_dir}}")
+print(f"[Download] Token: {{'Yes' if token else 'No (anonymous)'}}")
+print()
 
-    def _download_worker(self, model_name: str, token: Optional[str]):
-        """
-        Background thread - does heavy lifting.
-        Separated from UI logic (single responsibility).
-        """
+try:
+    snapshot_download(
+        repo_id=repo_id,
+        cache_dir=cache_dir,
+        token=token,
+        local_files_only=False,
+        resume_download=True,
+    )
+    print(f"\\n[Download] ✓ {{model_name}} download complete!")
+    sys.exit(0)
+except Exception as e:
+    print(f"\\n[Download] ✗ Error: {{e}}")
+    sys.exit(1)
+'''
+
+        # Write temporary script
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(script_content)
+            script_path = f.name
+
         try:
-            # This blocks until complete, but runs in background thread
-            # Modal() continues to poll for progress
-            self._download_manager.download(model_name, token=token)
-        except Exception:
-            # Error already handled in download manager
-            pass
+            # Run in subprocess
+            # Using Popen to stream output in real-time
+            process = subprocess.Popen(
+                [sys.executable, script_path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+                bufsize=1,
+            )
+
+            # Stream output to terminal
+            for line in process.stdout:
+                print(line, end="")
+
+            # Wait for completion
+            return_code = process.wait()
+
+            if return_code == 0:
+                print(f"\n{'=' * 60}")
+                print(f"[Subtitle Editor] ✓ {model_name} ready!")
+                print(f"{'=' * 60}\n")
+                self.report({"INFO"}, f"Model {model_name} downloaded successfully!")
+            else:
+                print(f"\n{'=' * 60}")
+                print(f"[Subtitle Editor] ✗ Download failed")
+                print(f"{'=' * 60}\n")
+                self.report({"ERROR"}, f"Failed to download {model_name}")
+
+        finally:
+            # Clean up temp script
+            try:
+                os.unlink(script_path)
+            except:
+                pass
+
+        return {"FINISHED"}
 
 
 classes = [SUBTITLE_OT_download_model]

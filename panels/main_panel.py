@@ -164,7 +164,13 @@ class SEQUENCER_PT_whisper_panel(Panel):
             row.alert = True
             row.label(text="⚠ Select backend and click Install PyTorch", icon="ERROR")
 
-        # Model sizes mapping for all 19 models
+        # Model dropdown with download button only
+        box = col.box()
+        row = box.row(align=True)
+        row.prop(props, "model", text="")
+        row.operator("subtitle.download_model", text="Download", icon="IMPORT")
+
+        # Show model size info
         model_sizes = {
             "tiny": "39 MB",
             "tiny.en": "39 MB",
@@ -186,20 +192,11 @@ class SEQUENCER_PT_whisper_panel(Panel):
             "large-v3-turbo": "809 MB",
             "turbo": "809 MB",
         }
-
-        # Model dropdown with download/cancel button
-        box = col.box()
-        row = box.row(align=True)
-        row.prop(props, "model", text="")
-
-        if props.is_downloading_model:
-            # Show cancel button instead of download button
-            row.operator("subtitle.cancel_download", text="Cancel", icon="CANCEL")
-
-            # Show progress bar
-            box.prop(
-                props, "model_download_progress", text="Download Progress", slider=True
-            )
+        if props.model in model_sizes:
+            row = box.row()
+            row.label(text=f"Size: {model_sizes[props.model]}", icon="INFO")
+            row = box.row()
+            row.label(text="Check terminal for progress", icon="CONSOLE")
 
             # Show status message
             box.label(text=props.model_download_status, icon="FILE_REFRESH")
