@@ -13,6 +13,9 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
+# Import language items directly
+from .constants import LANGUAGE_ITEMS
+
 
 class TextStripItem(PropertyGroup):
     """Property group representing a text strip in the sequencer"""
@@ -25,20 +28,28 @@ class TextStripItem(PropertyGroup):
         name="Start Frame", description="Frame where subtitle starts", default=1
     )
 
-    frame_end: IntProperty(name="End Frame", description="Frame where subtitle ends", default=25)
+    frame_end: IntProperty(
+        name="End Frame", description="Frame where subtitle ends", default=25
+    )
 
-    channel: IntProperty(name="Channel", description="Sequencer channel", default=3, min=1, max=128)
+    channel: IntProperty(
+        name="Channel", description="Sequencer channel", default=3, min=1, max=128
+    )
 
     is_selected: BoolProperty(
         name="Selected", description="Whether this strip is selected", default=False
     )
 
     strip_type: StringProperty(
-        name="Strip Type", description="Type of strip (TEXT, SCENE, etc.)", default="TEXT"
+        name="Strip Type",
+        description="Type of strip (TEXT, SCENE, etc.)",
+        default="TEXT",
     )
 
     strip_ref: StringProperty(
-        name="Strip Reference", description="Internal reference to the strip", default=""
+        name="Strip Reference",
+        description="Internal reference to the strip",
+        default="",
     )
 
 
@@ -49,8 +60,8 @@ class SubtitleEditorProperties(PropertyGroup):
     language: EnumProperty(
         name="Language",
         description="Language for transcription",
-        items=[],  # Will be populated on registration
-        default=0,
+        items=LANGUAGE_ITEMS,
+        default="auto",
     )
 
     model: EnumProperty(
@@ -85,11 +96,15 @@ class SubtitleEditorProperties(PropertyGroup):
     )
 
     word_timestamps: BoolProperty(
-        name="Word Timestamps", description="Generate timestamps for each word", default=False
+        name="Word Timestamps",
+        description="Generate timestamps for each word",
+        default=False,
     )
 
     vad_filter: BoolProperty(
-        name="Voice Activity Filter", description="Filter out non-speech segments", default=True
+        name="Voice Activity Filter",
+        description="Filter out non-speech segments",
+        default=True,
     )
 
     # UI State
@@ -114,7 +129,9 @@ class SubtitleEditorProperties(PropertyGroup):
     )
 
     progress_text: StringProperty(
-        name="Progress Text", description="Current transcription status", default="Ready"
+        name="Progress Text",
+        description="Current transcription status",
+        default="Ready",
     )
 
     # Text editing
@@ -199,17 +216,4 @@ class SubtitleEditorProperties(PropertyGroup):
         min=0.0,
         max=1.0,
         default=(0.0, 0.0, 0.0),
-    )
-
-
-# Registration helper
-def register_language_items():
-    """Register language items after constants module is loaded"""
-    from . import constants
-
-    SubtitleEditorProperties.language = EnumProperty(
-        name="Language",
-        description="Language for transcription",
-        items=constants.LANGUAGE_ITEMS,
-        default="auto",
     )
