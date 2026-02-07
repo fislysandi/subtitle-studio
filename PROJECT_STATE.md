@@ -305,6 +305,31 @@ cat PROJECT_STATE.md
 - **Faster Whisper:** https://github.com/SYSTRAN/faster-whisper
 - **Framework Docs:** See main repo README.md
 
+## 📖 Blender API Documentation
+
+### Core API References
+- **bpy.types.Operator** - https://docs.blender.org/api/current/bpy.types.Operator.html
+  - Base class for all addon operators
+  - `execute()`, `modal()`, `invoke()` methods
+  - `bl_idname`, `bl_label`, `bl_options` properties
+  
+- **bpy.types.WindowManager** - https://docs.blender.org/api/current/bpy.types.WindowManager.html
+  - Modal handler registration: `wm.modal_handler_add(operator)`
+  - Event timer management: `wm.event_timer_add()` / `wm.event_timer_remove()`
+  - Essential for non-blocking operations
+
+### Threading & Concurrency
+- **Threading Gotchas** - https://docs.blender.org/api/current/info_gotchas_threading.html
+  - **Critical**: Never manipulate Blender data from background threads
+  - Use `bpy.app.timers` for thread-safe UI updates
+  - Use `queue.Queue` for thread-to-main communication
+  - Always register timers on main thread only
+
+### VSE (Video Sequence Editor) API
+- **Sequences** - Use `sequences` (Blender 5.0+), not `sequences_all` (deprecated)
+- **Text Strips** - `bpy.types.TextSequence` for subtitle strips
+- **Scene Sequence Editor** - `context.scene.sequence_editor`
+
 ## 🔐 Hugging Face Token Configuration (Optional)
 
 To enable faster model downloads and avoid rate limits, you can set a Hugging Face authentication token:
