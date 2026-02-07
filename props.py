@@ -354,9 +354,21 @@ class SubtitleEditorProperties(PropertyGroup):
             # CPU (Universal fallback)
             ("cpu", "CPU Only", "No GPU - CPU computation only (works on all systems)"),
             # NVIDIA GPUs (All platforms)
-            ("cu118", "CUDA 11.8 — NVIDIA", "NVIDIA GPUs (older GTX/RTX series)"),
-            ("cu121", "CUDA 12.1 — NVIDIA", "NVIDIA RTX 20/30/40 series (recommended)"),
-            ("cu124", "CUDA 12.4 — NVIDIA", "NVIDIA RTX 40 series (latest)"),
+            (
+                "cu118",
+                "CUDA 11.8 — GTX/RTX 10/20/30 series",
+                "GTX 10 series, RTX 20/30 series, older GPUs",
+            ),
+            (
+                "cu121",
+                "CUDA 12.1 — RTX 30/40 series (Recommended)",
+                "RTX 3060/3070/3080/3090/4060/4070/4080/4090 - Best compatibility",
+            ),
+            (
+                "cu124",
+                "CUDA 12.4 — RTX 40 series only",
+                "RTX 4060/4070/4080/4090 - Latest, may not work with older cards",
+            ),
             # AMD GPUs (Platform-specific)
             ("rocm57", "ROCm 5.7 — AMD (Linux)", "AMD RX 7900 series - Linux ONLY"),
             # Apple / Intel
