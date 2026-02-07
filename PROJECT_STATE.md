@@ -1,6 +1,6 @@
 # Subtitle Editor - Project State
 
-**Last Updated:** 2025-02-07 (Commit: 29891fb - Blender 5.0 API Compatibility)  
+**Last Updated:** 2025-02-07 (Commit: c4bb551 - Code Review & Agent Context)  
 **Addon Location:** `addons/subtitle_editor/`
 
 ## 📍 Current Status
@@ -177,16 +177,28 @@ subtitle_editor/
 
 ## 🐛 Known Issues / TODO
 
-- [x] Add progress callback during transcription
-- [x] Implement dependency management UI
+### Critical (Fix Before Release)
+- [ ] **Thread Safety** - Property updates from background thread (ops_transcribe.py:69-70)
+  - Properties updated directly from thread can cause crashes
+  - Fix: Use `bpy.app.timers` for all property updates from threads
+- [ ] **Bare Except Clauses** - Replace with `except Exception:` (props.py:285, ops_dependencies.py:105)
+
+### Medium Priority
 - [ ] Implement batch styling (copy style to selected)
 - [ ] Add line break insertion
 - [ ] Test all import/export formats
 - [ ] Add file browser panels for import/export
 - [ ] Optimize transcription performance
+- [ ] Add temp file cleanup in finally blocks
+- [ ] Validate empty transcription results
+
+### Completed
+- [x] Add progress callback during transcription
+- [x] Implement dependency management UI
 - [x] Add PyTorch version selection in dependency installer
-- [ ] Implement word count splitting in transcription
-- [ ] Test PyTorch installation on different GPU types
+- [x] Fix Blender 5.0 API compatibility (sequences_all → sequences)
+- [x] Implement word count splitting in transcription
+- [x] Test PyTorch installation on different GPU types
 
 ## 🔄 To Resume Work
 
@@ -201,49 +213,56 @@ cat PROJECT_STATE.md
 
 ## 📝 Recent Changes
 
-1. **PyTorch GPU Support** - New PyTorch installation section with multi-GPU support
-   - GPU detection with visual warning if not detected (CPU fallback)
-   - Multi-backend support: NVIDIA CUDA, AMD ROCm, Apple Metal (MPS), Intel XPU
-   - PyTorch version dropdown with clear platform indicators:
-     * CUDA 11.8/12.1/12.4 for NVIDIA GPUs (all platforms)
-     * ROCm 5.7 for AMD RX 7900 series (Linux only)
-     * Metal (MPS) for Apple Silicon Macs
-   - **Explicit selection required** - Removed "auto" option, users must select their backend
-   - Install Dependencies button now only installs base packages (faster-whisper, etc.)
-   - PyTorch must be installed separately via dedicated "Install PyTorch" button
-   - Status messages during installation
-   - New operators: `check_gpu`, `install_pytorch`
+### 1. Code Review & Agent Context (Latest)
+- Comprehensive code review by CodeReviewer agent
+- Overall quality: **GOOD** ✅ Production-ready after thread safety fix
+- Created `.opencode/context.md` - Core development standards
+- Created `.opencode/agent-context.md` - Comprehensive agent guide
+- Documented Blender 5.0 API compatibility requirements
+- Listed all installed dependencies with versions
+- Identified 5 warnings to fix (1 critical thread safety issue)
+- All compliance checks passed (API, types, module separation, icons)
 
-2. **Major UI Redesign** - Complete overhaul of Transcription & Translation panel
-   - Added Dependencies section with install/verify functionality
-   - Reorganized layout: Dependencies → PyTorch → Model → Device/Compute → Language → Settings → Actions
-   - Added 19 Whisper models with clear multilingual/English grouping
-   - New controls: Beam Size, Max Words per Strip, Channel, Font Size, V Align, Wrap Width
-   - Integrated edit section into main panel (removed separate panel)
-   - VAD Filter now displays as checkbox
+### 2. Blender 5.0 API Compatibility
+- **CRITICAL FIX**: Replaced all `sequences_all` with `sequences`
+- Fixed 8 occurrences across 4 files:
+  - `utils/sequence_utils.py` (3x)
+  - `props.py` (1x)
+  - `operators/ops_transcribe.py` (2x)
+  - `operators/ops_strip_edit.py` (2x)
+- Addon now works with Blender 5.0+
 
-3. **New Operators**
-   - `subtitle.translate` - Dedicated translation to English
-   - `subtitle.check_dependencies` - Check dependency installation status
-   - `subtitle.install_dependencies` - Install missing dependencies
-   - `subtitle.check_gpu` - Check GPU availability
-   - `subtitle.install_pytorch` - Install PyTorch with CUDA/ROCm support
+### 3. PyTorch GPU Support
+- GPU detection with visual warning if not detected (CPU fallback)
+- Multi-backend support: NVIDIA CUDA, AMD ROCm, Apple Metal (MPS), Intel XPU
+- PyTorch version dropdown with clear platform indicators:
+  * CUDA 11.8/12.1/12.4 for NVIDIA GPUs (all platforms)
+  * ROCm 5.7 for AMD RX 7900 series (Linux only)
+  * Metal (MPS) for Apple Silicon Macs
+- **Explicit selection required** - Removed "auto" option
+- Install Dependencies button only installs base packages
+- PyTorch installed separately via "Install PyTorch" button
+- New operators: `check_gpu`, `install_pytorch`
 
-4. **New Properties**
-   - `compute_type` - Computation precision (int8, float16, float32)
-   - `beam_size` - Beam search size (1-10)
-   - `max_words_per_strip` - Word limit per subtitle strip (0-20)
-   - `subtitle_channel` - Default channel for new strips
-   - `subtitle_font_size` - Font size control (8-200)
-   - `v_align` - Vertical alignment (Top/Center/Bottom)
-   - `wrap_width` - Text wrapping factor (0-1)
-   - PyTorch settings: `pytorch_version`, `gpu_detected`, `is_installing_pytorch`, `pytorch_install_status`
-   - Dependency tracking: `deps_*` status properties
+### 4. Major UI Redesign
+- Complete overhaul of Transcription & Translation panel
+- Layout: Dependencies → PyTorch → Model → Device/Compute → Language → Settings → Actions
+- 19 Whisper models with clear multilingual/English grouping
+- New controls: Beam Size, Max Words, Channel, Font Size, V Align, Wrap Width
+- Integrated edit section (removed separate panel)
+- VAD Filter displays as checkbox
 
-5. **Previous**
-   - UI Update - Matched upstream tin2tin layout style
-   - Framework Migration - Migrated to auto-load system
-   - UV Integration - Dependency management via UV
+### 5. New Features
+- `subtitle.translate` - Dedicated translation operator
+- `subtitle.check_dependencies` / `subtitle.install_dependencies`
+- `subtitle.check_gpu` / `subtitle.install_pytorch`
+- Debug output for dependency checking
+- Better NVIDIA GPU version guidance in dropdowns
+
+### 6. Previous
+- UI Update - Matched upstream tin2tin layout style
+- Framework Migration - Auto-load system
+- UV Integration - Dependency management
 
 ## 💡 For AI Assistant
 
@@ -281,6 +300,53 @@ cat PROJECT_STATE.md
 - **Upstream Repo:** https://github.com/tin2tin/Subtitle_Editor
 - **Faster Whisper:** https://github.com/SYSTRAN/faster-whisper
 - **Framework Docs:** See main repo README.md
+
+## 📚 Development Context Files
+
+Located in `.opencode/` directory for AI assistants:
+
+### `.opencode/context.md`
+Critical development standards:
+- Blender 5.0 API changes (sequences_all → sequences)
+- Type annotations required for all bpy.props
+- Module separation rules (no bpy in core/)
+- Async operations pattern (threading + timers)
+- Common pitfalls and testing procedures
+
+### `.opencode/agent-context.md`
+Comprehensive agent guide:
+- All installed dependencies with versions
+- Code architecture and patterns
+- UI guidelines and available icons
+- Property group examples
+- Async operations pattern
+- Thread safety requirements
+- Complete file structure
+- Testing with hot reload
+
+## ⚠️ Code Review Findings
+
+**Overall Quality: GOOD** ✅ Production-ready after thread safety fix
+
+### Critical Issues (Must Fix)
+1. **Thread Safety** - ops_transcribe.py updates properties from background thread
+2. **Bare Except** - props.py:285 catches SystemExit/KeyboardInterrupt
+
+### Files Already Fixed for Blender 5.0
+- ✅ `utils/sequence_utils.py` - 3 sequences_all → sequences
+- ✅ `props.py` - 1 sequences_all → sequences  
+- ✅ `operators/ops_transcribe.py` - 2 sequences_all → sequences
+- ✅ `operators/ops_strip_edit.py` - 2 sequences_all → sequences
+
+### Compliance Checklist
+| Requirement | Status |
+|-------------|--------|
+| Blender 5.0 API (sequences not sequences_all) | ✅ PASS |
+| Type annotations for all bpy.props | ✅ PASS |
+| No bpy imports in core/ modules | ✅ PASS |
+| Threading for heavy operations | ✅ PASS |
+| Error handling on imports | ✅ PASS |
+| Valid Blender icons only | ✅ PASS |
 
 ---
 
