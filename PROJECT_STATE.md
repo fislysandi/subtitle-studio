@@ -1,6 +1,6 @@
 # Subtitle Editor - Project State
 
-**Last Updated:** 2025-02-07 (Commit: 5862a7e - Explicit PyTorch Selection)  
+**Last Updated:** 2025-02-07 (Commit: 29891fb - Blender 5.0 API Compatibility)  
 **Addon Location:** `addons/subtitle_editor/`
 
 ## 📍 Current Status
