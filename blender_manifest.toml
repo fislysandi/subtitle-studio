@@ -1,0 +1,15 @@
+schema_version = "1.0.0"
+
+id = "subtitle_editor"
+version = "1.0.0"
+name = "Subtitle Editor"
+tagline = "AI-powered subtitle transcription and editing for Blender VSE"
+maintainer = "Your Name"
+type = "add-on"
+category = "Sequencer"
+blender_version_min = "4.2.0"
+license = ["SPDX:MIT"]
+copyright = ["2024 Your Name"]
+
+# Dependencies are managed by UV (pyproject.toml)
+# This manifest is for Blender's extension system
