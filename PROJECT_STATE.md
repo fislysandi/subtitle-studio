@@ -1,6 +1,6 @@
 # Subtitle Editor - Project State
 
-**Last Updated:** 2025-02-07 (Commit: Latest - PyTorch GPU Support)  
+**Last Updated:** 2025-02-07 (Commit: 5862a7e - Explicit PyTorch Selection)  
 **Addon Location:** `addons/subtitle_editor/`
 
 ## 📍 Current Status
