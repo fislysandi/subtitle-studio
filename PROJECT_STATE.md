@@ -24,6 +24,7 @@
 - 📥 **Import/Export** (SRT, VTT, ASS formats)
 - ⚙️ **Advanced settings**: beam size, max words per strip, font size, alignment
 - 🔧 **Dependency management** with install/verify functionality
+- 💾 **Model download** - Download Whisper models on demand
 - 🔥 **Hot-reload** during development
 
 ## ✅ Completed Migration Tasks
@@ -138,6 +139,7 @@ subtitle_editor/
 - `subtitle.install_dependencies` - Install missing dependencies
 - `subtitle.check_gpu` - Check GPU availability for PyTorch
 - `subtitle.install_pytorch` - Install PyTorch with selected CUDA/ROCm version
+- `subtitle.download_model` - Download selected Whisper model on demand
 
 ### Panels
 - `SEQUENCER_PT_panel` - Main panel with UIList and integrated editing
@@ -174,6 +176,7 @@ subtitle_editor/
 - `current_text` - Currently editing text
 - **Dependencies:** `deps_faster_whisper`, `deps_torch`, `deps_pysubs2`, `deps_onnxruntime`, `is_installing_deps`, `deps_install_status`
 - **PyTorch Settings:** `pytorch_version` (cpu/cu118/cu121/cu124/rocm57/mps), `gpu_detected`, `is_installing_pytorch`, `pytorch_install_status`
+- **Model Download:** `is_downloading_model`, `model_download_status`, `model_download_progress`
 
 ## 🐛 Known Issues / TODO
 
