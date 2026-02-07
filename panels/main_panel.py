@@ -164,20 +164,6 @@ class SEQUENCER_PT_whisper_panel(Panel):
             row.alert = True
             row.label(text="⚠ Select backend and click Install PyTorch", icon="ERROR")
 
-        # Help text for NVIDIA users
-        if not props.deps_torch:
-            row = box.row()
-            row.scale_y = 0.8
-            row.label(
-                text="NVIDIA: Pick CUDA 12.1 for RTX 3060-4090 (recommended)",
-                icon="INFO",
-            )
-            row = box.row()
-            row.scale_y = 0.8
-            row.label(
-                text="NVIDIA: Pick CUDA 11.8 for GTX 10 series or older", icon="INFO"
-            )
-
         # Model dropdown
         box = col.box()
         box.prop(props, "model")
