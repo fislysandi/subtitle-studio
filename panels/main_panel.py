@@ -147,7 +147,7 @@ class SEQUENCER_PT_whisper_panel(Panel):
 
         # PyTorch Version selection (required)
         row = box.row()
-        row.label(text="Select your GPU backend:", icon="GPU")
+        row.label(text="Select your GPU backend:", icon="PREFERENCES")
 
         # PyTorch Version dropdown and Install button
         row = box.row(align=True)
