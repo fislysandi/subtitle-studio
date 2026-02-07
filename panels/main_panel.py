@@ -51,6 +51,36 @@ class SEQUENCER_PT_panel(Panel):
         # Update
         row.operator("subtitle.update_text", text="", icon="CHECKMARK")
 
+        # Edit section (moved from separate panel)
+        layout.separator()
+
+        # Edit selected
+        if scene.text_strip_items_index >= 0 and scene.text_strip_items:
+            item = scene.text_strip_items[scene.text_strip_items_index]
+            col = layout.column()
+
+            # Text editing box
+            box = col.box()
+            box.label(text=f"Editing: {item.name}")
+            box.prop(scene.subtitle_editor, "current_text")
+
+            # Timing and position box
+            box = col.box()
+            row = box.row(align=True)
+            row.prop(item, "frame_start", text="Start")
+            row.prop(item, "frame_end", text="End")
+            box.prop(item, "channel")
+
+            # Style box
+            box = col.box()
+            box.prop(scene.subtitle_editor, "font_size")
+            row = box.row(align=True)
+            row.prop(scene.subtitle_editor, "text_color")
+            row.prop(scene.subtitle_editor, "shadow_color")
+        else:
+            box = layout.box()
+            box.label(text="Select a subtitle from the list to edit")
+
 
 class SEQUENCER_PT_whisper_panel(Panel):
     """Transcription & Translation Panel"""
@@ -70,51 +100,76 @@ class SEQUENCER_PT_whisper_panel(Panel):
         scene = context.scene
         props = scene.subtitle_editor
 
-        # Configuration Section
+        # Dependencies Section
         col = layout.column()
         box = col.box()
-        box.prop(props, "model")
         row = box.row(align=True)
-        row.prop(props, "device")
-        row.prop(props, "language")
-        row = box.row(align=True)
-        row.prop(props, "show_advanced", text="Advanced", toggle=True)
 
-        if props.show_advanced:
-            box.prop(props, "translate")
-            box.prop(props, "word_timestamps")
-            box.prop(props, "vad_filter")
+        # Check if all dependencies are installed
+        all_deps_installed = (
+            props.deps_faster_whisper
+            and props.deps_torch
+            and props.deps_pysubs2
+            and props.deps_onnxruntime
+        )
+
+        # Dependencies label with icon
+        icon = "CHECKBOX_HLT" if all_deps_installed else "CHECKBOX_DEHLT"
+        row.label(text="Dependencies:", icon=icon)
+
+        # Install/Verify button
+        row.operator(
+            "subtitle.install_dependencies", text="Install/Verify Dependencies"
+        )
+
+        # Show install status if installing
+        if props.is_installing_deps:
+            row = box.row()
+            row.prop(props, "deps_install_status", text="Status", emboss=False)
+
+        # Model dropdown
+        box = col.box()
+        box.prop(props, "model")
+
+        # Device | Compute Type row
+        row = box.row(align=True)
+        row.prop(props, "device", text="")
+        row.prop(props, "compute_type", text="")
+
+        # Language dropdown
+        box.prop(props, "language")
+
+        # Beam Size | VAD Filter row
+        row = box.row(align=True)
+        row.prop(props, "beam_size", text="Beam Size")
+        row.prop(props, "vad_filter", text="")
+
+        # Max Words Per Strip slider
+        row = box.row()
+        row.prop(props, "max_words_per_strip", text="Max Words per Strip", slider=True)
+
+        # Channel | Font Size row
+        row = box.row(align=True)
+        row.prop(props, "subtitle_channel", text="Channel")
+        row.prop(props, "subtitle_font_size", text="Font Size")
+
+        # V Alignment | Wrap Width row
+        row = box.row(align=True)
+        row.prop(props, "v_align", text="V Align")
+        row.prop(props, "wrap_width", text="Wrap Width", toggle=True)
 
         # Actions Section
         box = col.box()
         action_col = box.column(align=True)
 
-        # Transcribe button
-        row = action_col.row()
-        row.scale_y = 1.5
+        # Transcribe to Text Strips button
+        row = action_col.row(align=True)
         row.operator(
-            "subtitle.transcribe", text="Transcribe to Text Strips", icon="REC"
+            "subtitle.transcribe", text="Transcribe to Text Strips", icon="RADIOBUT_OFF"
         )
 
-
-class SEQUENCER_PT_edit_panel(Panel):
-    """Edit Subtitles Panel"""
-
-    bl_label = "Edit Subtitles"
-    bl_idname = "SEQUENCER_PT_edit_panel"
-    bl_space_type = "SEQUENCE_EDITOR"
-    bl_region_type = "UI"
-    bl_category = "Subtitle Editor"
-
-    def draw(self, context):
-        layout = self.layout
-        scene = context.scene
-
-        # Edit selected
-        if scene.text_strip_items_index >= 0 and scene.text_strip_items:
-            item = scene.text_strip_items[scene.text_strip_items_index]
-            box = layout.box()
-            box.label(text=f"Editing: {item.name}")
-            box.prop(scene.subtitle_editor, "current_text")
-        else:
-            layout.label(text="Select a subtitle from the list above")
+        # Translate to Text Strips (EN) button
+        row = action_col.row(align=True)
+        row.operator(
+            "subtitle.translate", text="Translate to Text Strips (EN)", icon="FONT_DATA"
+        )

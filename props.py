@@ -68,11 +68,61 @@ class SubtitleEditorProperties(PropertyGroup):
         name="Model",
         description="Whisper model size",
         items=[
-            ("tiny", "Tiny", "Fastest, lowest accuracy"),
-            ("base", "Base", "Fast, good accuracy"),
-            ("small", "Small", "Balanced"),
-            ("medium", "Medium", "Better accuracy"),
-            ("large-v3", "Large v3", "Best accuracy, slowest"),
+            # Multilingual Models
+            ("tiny", "Tiny — Multilingual (~39M)", "Fastest, lowest accuracy"),
+            ("base", "Base — Multilingual (~74M)", "Fast, good accuracy"),
+            ("small", "Small — Multilingual (~244M)", "Balanced speed/accuracy"),
+            ("medium", "Medium — Multilingual (~769M)", "Better accuracy"),
+            ("large-v3", "Large-v3 — Multilingual (~1550M)", "Best accuracy, slowest"),
+            ("large-v2", "Large-v2 — Multilingual (~1550M)", "Second generation large"),
+            ("large-v1", "Large-v1 — Multilingual (~1550M)", "First generation large"),
+            ("large", "Large — Multilingual (~1550M)", "Alias for large-v3"),
+            # English-Only Models
+            (
+                "tiny.en",
+                "Tiny.en — English Only (~39M)",
+                "Fastest English transcription",
+            ),
+            ("base.en", "Base.en — English Only (~74M)", "Fast English transcription"),
+            (
+                "small.en",
+                "Small.en — English Only (~244M)",
+                "Balanced English transcription",
+            ),
+            ("medium.en", "Medium.en — English Only (~769M)", "High quality English"),
+            # Distilled Models (Faster, English-Only)
+            (
+                "distil-small.en",
+                "Distil-Small.en — English (~111M)",
+                "Distilled, very fast",
+            ),
+            (
+                "distil-medium.en",
+                "Distil-Medium.en — English (~394M)",
+                "Distilled, fast",
+            ),
+            (
+                "distil-large-v2",
+                "Distil-Large-v2 — Multilingual (~756M)",
+                "Distilled large-v2",
+            ),
+            (
+                "distil-large-v3",
+                "Distil-Large-v3 — Multilingual (~756M)",
+                "Distilled large-v3",
+            ),
+            (
+                "distil-large-v3.5",
+                "Distil-Large-v3.5 — Multilingual (~756M)",
+                "Distilled v3.5",
+            ),
+            # Turbo Models (Fast & Accurate)
+            (
+                "large-v3-turbo",
+                "Large-v3-Turbo — Multilingual (~809M)",
+                "Fast with great accuracy",
+            ),
+            ("turbo", "Turbo — Multilingual (~809M)", "Alias for large-v3-turbo"),
         ],
         default="base",
     )
@@ -86,6 +136,72 @@ class SubtitleEditorProperties(PropertyGroup):
             ("cuda", "CUDA", "NVIDIA GPU"),
         ],
         default="auto",
+    )
+
+    compute_type: EnumProperty(
+        name="Compute Type",
+        description="Computation precision (affects speed/quality)",
+        items=[
+            ("default", "Default", "Use default precision"),
+            ("int8", "int8", "Fastest, lowest precision"),
+            ("float16", "float16", "Good balance"),
+            ("float32", "float32", "Best precision, slowest"),
+        ],
+        default="default",
+    )
+
+    beam_size: IntProperty(
+        name="Beam Size",
+        description="Beam size for transcription (higher = better accuracy, slower)",
+        default=5,
+        min=1,
+        max=10,
+    )
+
+    max_words_per_strip: IntProperty(
+        name="Max Words",
+        description="Maximum number of words per subtitle strip before creating a new one (0 = unlimited)",
+        default=7,
+        min=0,
+        max=20,
+        subtype="NONE",
+    )
+
+    # Subtitle strip settings
+    subtitle_channel: IntProperty(
+        name="Channel",
+        description="Default channel for new subtitle strips",
+        default=2,
+        min=1,
+        max=128,
+    )
+
+    subtitle_font_size: IntProperty(
+        name="Font Size",
+        description="Default font size for subtitle strips",
+        default=50,
+        min=8,
+        max=200,
+    )
+
+    v_align: EnumProperty(
+        name="V Alignment",
+        description="Vertical alignment of subtitles",
+        items=[
+            ("TOP", "Top", "Align to top"),
+            ("CENTER", "Center", "Align to center"),
+            ("BOTTOM", "Bottom", "Align to bottom"),
+        ],
+        default="BOTTOM",
+    )
+
+    wrap_width: FloatProperty(
+        name="Wrap Width",
+        description="Text wrap width (0 = no wrapping, 1 = full width)",
+        default=0.70,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
     )
 
     # Transcription options
@@ -187,6 +303,43 @@ class SubtitleEditorProperties(PropertyGroup):
             ("ASS", "Advanced SSA (.ass)", "ASS format"),
         ],
         default="SRT",
+    )
+
+    # Dependencies status
+    deps_faster_whisper: BoolProperty(
+        name="Faster Whisper",
+        description="Faster Whisper is installed",
+        default=False,
+    )
+
+    deps_torch: BoolProperty(
+        name="PyTorch",
+        description="PyTorch is installed",
+        default=False,
+    )
+
+    deps_pysubs2: BoolProperty(
+        name="PySubs2",
+        description="PySubs2 is installed",
+        default=False,
+    )
+
+    deps_onnxruntime: BoolProperty(
+        name="ONNX Runtime",
+        description="ONNX Runtime is installed",
+        default=False,
+    )
+
+    is_installing_deps: BoolProperty(
+        name="Installing",
+        description="Dependencies are being installed",
+        default=False,
+    )
+
+    deps_install_status: StringProperty(
+        name="Install Status",
+        description="Current installation status",
+        default="",
     )
 
     # Text strip appearance
