@@ -68,13 +68,18 @@ bl_info = {
 # Addon Properties
 # =============================================================================
 
+from .utils import sequence_utils
+
 # Properties are registered via this dict (framework convention)
 # Don't define your own property group class in this file - import from props.py
 _addon_properties = {
     bpy.types.Scene: {
         "subtitle_editor": PointerProperty(type=SubtitleEditorProperties),
         "text_strip_items": CollectionProperty(type=TextStripItem),
-        "text_strip_items_index": IntProperty(default=-1),
+        "text_strip_items_index": IntProperty(
+            default=-1,
+            update=sequence_utils.on_text_strip_index_update
+        ),
     }
 }
 

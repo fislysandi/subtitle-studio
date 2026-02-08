@@ -236,6 +236,39 @@ class SubtitleEditorProperties(PropertyGroup):
         default=True,
     )
 
+    # VAD Parameters (Advanced)
+    vad_threshold: FloatProperty(
+        name="Threshold",
+        description="Speech probability threshold (lower = more sensitive). Tuning for music: try 0.3-0.4",
+        default=0.5,
+        min=0.0,
+        max=1.0,
+    )
+
+    min_speech_duration_ms: IntProperty(
+        name="Min Speech (ms)",
+        description="Minimum duration of speech segments. Decrease for fast lyrics.",
+        default=250,
+        min=0,
+        max=5000,
+    )
+
+    min_silence_duration_ms: IntProperty(
+        name="Min Silence (ms)",
+        description="Minimum duration of silence to split speech. Decrease to split lyrics better.",
+        default=2000,
+        min=0,
+        max=10000,
+    )
+
+    speech_pad_ms: IntProperty(
+        name="Speech Padding (ms)",
+        description="Padding added to speech segments",
+        default=400,
+        min=0,
+        max=2000,
+    )
+
     # UI State
     show_advanced: BoolProperty(
         name="Show Advanced Options",

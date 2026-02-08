@@ -1,6 +1,6 @@
 # Subtitle Editor - Project State
 
-**Last Updated:** 2025-02-08 (Restored Non-Blocking Model Download with Progress)  
+**Last Updated:** 2026-02-08 (NumPy Compatibility Fix)  
 **Addon Location:** `addons/subtitle_editor/`
 
 ## 📍 Current Status
@@ -233,12 +233,30 @@ cd addons/subtitle_editor
 cat PROJECT_STATE.md
 ```
 
-## 📝 Recent Changes
+## 📝 Recent Changes (2026-02-08 Highlights)
 
-### 1. Critical Stability Fixes (Latest)
-- **Model Download**: Fixed `AttributeError` (missing `_get_repo_id`) and `IOError` (missing directory/symlinks) in `DownloadManager`.
-- **Thread Safety**: Refactored `ops_transcribe.py` to decouple background threads from Blender properties.
-- **Error Handling**: Replaced bare `except:` clauses with `except Exception:` in `props.py` and `ops_dependencies.py`.
+### 🚀 Major Stability & Compatibility Fixes
+- **NumPy 2.x Conflict Resolved**: Enforced `numpy<2.0` (1.26.4) in `pyproject.toml` and manually in `ops_dependencies.py`. This fixes crash-on-import issues with Blender's bundled `aud` module.
+- **Blender 5.0 API Alignment**: 
+  - Fixed `new_effect()` called with `frame_end` instead of `length`.
+  - Fixed `shadow_color` requiring RGBA (4 values) instead of RGB (3 values).
+  - Continuous migration from `sequences_all` to `sequences`.
+- **Model Loading Fallbacks**: 
+  - Implemented auto-fallback from `float16` to `int8/float32` on CPU to prevent crashes.
+  - Added model file verification (`model.bin`/`config.json`) before loading to provide clear user guidance.
+
+### ✨ UX & Workflow Improvements
+- **Advanced VAD Tuning**: Exposed `threshold`, `min_speech_duration_ms`, `min_silence_duration_ms`, and `speech_pad_ms` in "Advanced Settings". Specifically tuned for better lyrics detection in music files.
+- **UI & Timeline Sync**: 
+  - Selecting a subtitle in the UI list now automatically jumps the playhead to its start frame.
+  - Selecting in the list now selects the corresponding strip in the Sequencer and populates the `current_text` property for immediate editing.
+- **Improved Installation Feedback**: Removed silent mode (`-q`) from dependency installers (General & PyTorch). Progress is now streamed to the **System Console** (Window > Toggle System Console) for better visibility.
+- **Smart List Filtering**: The subtitle UI list now correctly filters text strips based on the selected `subtitle_channel`.
+
+### 🛠️ Maintenance
+- **Thread Safety**: Decoupled background threads from direct Blender property access using `bpy.app.timers`.
+- **Error Handling**: Cleaned up bare `except:` clauses and added more descriptive status messages in operators.
+- **Path Handling**: Improved relative path resolution for audio/video strips.
 
 ### 2. Restored Non-Blocking Model Download with Progress UI
 **Git History Preserved:** This is a new implementation based on commit 8942594, not a revert

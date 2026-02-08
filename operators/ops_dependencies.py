@@ -148,30 +148,32 @@ class SUBTITLE_OT_install_dependencies(Operator):
             # Get Python executable
             python_exe = sys.executable
 
-            # Base packages (always needed) - versions from pyproject.toml
-            # Note: PyTorch should be installed separately via install_pytorch operator
+            # Base packages (always needed)
+            # IMPORTANT: numpy<2.0 is required for compatibility with Blender's bundled modules
             packages = [
-                "faster-whisper",  # Latest version from UV
+                "numpy<2.0",
+                "faster-whisper",
                 "pysubs2>=1.8.0",
                 "onnxruntime>=1.24.1",
             ]
 
-            # Install packages
-            for i, package in enumerate(packages):
-                props.deps_install_status = f"Installing {package}..."
+            # Install all packages in a single command to ensure proper dependency resolution
+            print(f"Running command: {' '.join([python_exe, '-m', 'pip', 'install'] + packages)}")
+            props.deps_install_status = "Installing dependencies... Check System Console (Window > Toggle System Console) for details."
+            
+            # Construct command: python -m pip install numpy<2.0 faster-whisper ...
+            # Removed -q to show progress in system console
+            cmd = [python_exe, "-m", "pip", "install"] + packages
 
-                cmd = [python_exe, "-m", "pip", "install", "-q", package]
+            # Don't capture output so it goes to system console (user can see progress)
+            result = subprocess.run(
+                cmd, check=False
+            )
 
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, check=False
-                )
-
-                if result.returncode != 0:
-                    props.deps_install_status = (
-                        f"Error installing {package}: {result.stderr[:200]}"
-                    )
-                    props.is_installing_deps = False
-                    return
+            if result.returncode != 0:
+                props.deps_install_status = "Error: Installation failed. Check System Console for details."
+                props.is_installing_deps = False
+                return
 
             props.deps_install_status = (
                 "Dependencies installed! Install PyTorch below for GPU support."
@@ -292,20 +294,21 @@ class SUBTITLE_OT_install_pytorch(Operator):
             # Install PyTorch
             props.pytorch_install_status = f"Installing PyTorch ({pytorch_version})..."
 
-            cmd = [python_exe, "-m", "pip", "install", "-q"] + packages
+            # IMPORTANT: numpy<2.0 is required for compatibility
+            # We add it here to ensure PyTorch install doesn't upgrade it
+            # Removed -q to show progress in system console
+            cmd = [python_exe, "-m", "pip", "install", "numpy<2.0"] + packages
             if index_url:
                 cmd.extend(["--index-url", index_url])
 
-            # Add nightly flag for MPS if needed (usually stable has it now)
-            if use_mps:
-                # On macOS with MPS, standard PyTorch installation works
-                # No special flags needed as of PyTorch 2.0+
-                pass
+            print(f"Running command: {' '.join(cmd)}")
+            props.pytorch_install_status = "Installing... Check System Console (Window > Toggle System Console) for progress..."
 
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            # Don't capture output so it goes to system console (user can see progress)
+            result = subprocess.run(cmd, check=False)
 
             if result.returncode != 0:
-                props.pytorch_install_status = f"Error: {result.stderr[:200]}"
+                props.pytorch_install_status = "Error: Installation failed. Check System Console for details."
                 props.is_installing_pytorch = False
                 return
 

@@ -67,24 +67,67 @@ class TranscriptionManager:
             model_path_or_size = self.model_name
             download_root = cache_dir
 
-            # Check if we have a local flat model directory (new structure)
+            # PRE-CHECK: Validate model files exist before attempting to load
             if cache_dir:
                 local_model_path = os.path.join(cache_dir, self.model_name)
-                if os.path.exists(os.path.join(local_model_path, "model.bin")):
-                    # Found local model folder - load directly from path
-                    model_path_or_size = local_model_path
-                    download_root = None  # Don't use download_root when path provided
+                
+                # Check if model directory exists
+                if os.path.exists(local_model_path):
+                    has_bin = os.path.exists(os.path.join(local_model_path, "model.bin"))
+                    has_config = os.path.exists(os.path.join(local_model_path, "config.json"))
+                    
+                    if has_bin and has_config:
+                        # Model exists and looks complete - use local path
+                        model_path_or_size = local_model_path
+                        download_root = None  # Don't use download_root when path provided
+                    elif os.path.exists(local_model_path):
+                        # Directory exists but files incomplete
+                        print(f"Error: Model '{self.model_name}' files are incomplete.")
+                        print(f"Expected: model.bin and config.json in {local_model_path}")
+                        print(f"Please re-download the model using the 'Download Model' button.")
+                        return False
+                else:
+                    # Model directory doesn't exist at all
+                    print(f"Error: Model '{self.model_name}' not found.")
+                    print(f"Please download the model first using the 'Download Model' button in the addon panel.")
+                    return False
+
+            # Auto-detect and adjust compute type for compatibility
+            compute_type = self.compute_type
+            if compute_type == "default":
+                # Let faster-whisper handle default
+                pass
+            elif compute_type == "float16":
+                # float16 only works efficiently on GPU
+                if self.device == "cpu":
+                    print(f"Warning: float16 not supported on CPU, falling back to int8")
+                    compute_type = "int8"
+            # int8, float32 work on both CPU and GPU
 
             self.model = WhisperModel(
                 model_path_or_size,
                 device=self.device,
-                compute_type=self.compute_type,
+                compute_type=compute_type,
                 download_root=download_root,
             )
+            
+            # Update the stored compute type to reflect what was actually used
+            self.compute_type = compute_type
             return True
 
         except Exception as e:
-            print(f"Error loading model: {e}")
+            error_msg = str(e)
+            
+            # Provide user-friendly error messages
+            if "float16" in error_msg and "not support" in error_msg:
+                print(f"Error: float16 compute type not supported on {self.device}")
+                print(f"Recommendation: Use 'int8' for CPU or 'float32' for broader compatibility")
+            elif "No such file or directory" in error_msg or "does not appear to have a file named" in error_msg:
+                print(f"Error: Model '{self.model_name}' not found.")
+                print(f"Please download the model using the 'Download Model' button.")
+            else:
+                print(f"Error loading model: {e}")
+            
             return False
 
     def set_progress_callback(self, callback: Callable[[float, str], None]):
@@ -102,6 +145,7 @@ class TranscriptionManager:
         translate: bool = False,
         word_timestamps: bool = False,
         vad_filter: bool = True,
+        vad_parameters: Optional[Dict] = None,
     ) -> Iterator[TranscriptionSegment]:
         """Transcribe audio file
 
@@ -111,6 +155,7 @@ class TranscriptionManager:
             translate: Translate to English
             word_timestamps: Include word-level timestamps
             vad_filter: Filter out non-speech
+            vad_parameters: Dictionary of VAD parameters (threshold, min_speech_duration_ms, etc.)
 
         Yields:
             TranscriptionSegment objects
@@ -123,6 +168,9 @@ class TranscriptionManager:
             "word_timestamps": word_timestamps,
             "vad_filter": vad_filter,
         }
+        
+        if vad_filter and vad_parameters:
+            options["vad_parameters"] = vad_parameters
 
         if language and language != "auto":
             options["language"] = language

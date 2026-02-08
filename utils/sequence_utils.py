@@ -29,7 +29,10 @@ def get_strip_filepath(strip) -> Optional[str]:
     
     if filepath:
         # Convert to absolute path (handles // prefix)
-        return bpy.path.abspath(filepath)
+        abs_path = bpy.path.abspath(filepath)
+        # Normalize path (handles .. and redundant separators)
+        import os
+        return os.path.abspath(abs_path)
     return None
 
 
@@ -52,13 +55,17 @@ def create_text_strip(
     if not scene.sequence_editor:
         scene.sequence_editor_create()
 
+    # Calculate length from frame_start and frame_end
+    # Blender 5.0 API: new_effect() uses 'length' instead of 'frame_end'
+    length = max(1, frame_end - frame_start)
+
     # Create text strip
     strip = scene.sequence_editor.strips.new_effect(
         name=name,
         type="TEXT",
         channel=channel,
         frame_start=frame_start,
-        frame_end=frame_end,
+        length=length,
     )
 
     # Set text properties
@@ -66,13 +73,13 @@ def create_text_strip(
     strip.font_size = 24
     strip.location = (0.5, 0.1)  # Center bottom
     strip.use_shadow = True
-    strip.shadow_color = (0, 0, 0)
+    strip.shadow_color = (0, 0, 0, 1)  # RGBA - Blender 5.0 requires 4 values
 
     return strip
 
 
 def refresh_list(context):
-    """Refresh the UI list of text strips"""
+    """Refresh the UI list of text strips on the subtitle channel"""
     if not context.scene:
         return
 
@@ -82,9 +89,13 @@ def refresh_list(context):
     if not context.scene.sequence_editor:
         return
 
-    # Add all text strips
+    # Get the designated subtitle channel from settings
+    props = context.scene.subtitle_editor
+    subtitle_channel = props.subtitle_channel
+
+    # Add only text strips that are on the subtitle channel
     for strip in context.scene.sequence_editor.strips:
-        if strip.type == "TEXT":
+        if strip.type == "TEXT" and strip.channel == subtitle_channel:
             item = context.scene.text_strip_items.add()
             item.name = strip.name
             item.text = strip.text
@@ -102,7 +113,32 @@ def get_text_strips(scene) -> List[Any]:
     return [s for s in scene.sequence_editor.strips if s.type == "TEXT"]
 
 
-def update_text_strip(strip, text: str):
-    """Update text content of a strip"""
-    if strip and strip.type == "TEXT":
-        strip.text = text
+def on_text_strip_index_update(self, context):
+    """Callback when text strip list index changes"""
+    if not context.scene:
+        return
+
+    index = context.scene.text_strip_items_index
+    items = context.scene.text_strip_items
+    
+    if 0 <= index < len(items):
+        item = items[index]
+        # Jump cursor to start of strip
+        context.scene.frame_current = item.frame_start
+
+        # Sync editing text
+        context.scene.subtitle_editor.current_text = item.text
+        
+        # Optional: Select the actual strip in sequencer
+        # This keeps the UI list and Sequencer selection in sync
+        if context.scene.sequence_editor:
+            # Deselect all
+            for s in context.scene.sequence_editor.strips:
+                s.select = False
+            
+            # Select the matching strip
+            for s in context.scene.sequence_editor.strips:
+                if s.name == item.name:
+                    s.select = True
+                    context.scene.sequence_editor.active_strip = s
+                    break

@@ -38,8 +38,15 @@ class SUBTITLE_OT_transcribe(Operator):
             "translate": props.translate,
             "word_timestamps": props.word_timestamps,
             "vad_filter": props.vad_filter,
+            "vad_parameters": {
+                "threshold": props.vad_threshold,
+                "min_speech_duration_ms": props.min_speech_duration_ms,
+                "min_silence_duration_ms": props.min_silence_duration_ms,
+                "speech_pad_ms": props.speech_pad_ms,
+            },
             "subtitle_channel": props.subtitle_channel,
             "render_fps": scene.render.fps,
+            "compute_type": props.compute_type,
             # Extract filepath on main thread for safety
             "filepath": sequence_utils.get_strip_filepath(strip),
         }
@@ -94,12 +101,17 @@ class SUBTITLE_OT_transcribe(Operator):
 
             # Initialize transcriber
             tm = transcriber.TranscriptionManager(
-                model_name=config["model"], device=config["device"]
+                model_name=config["model"], 
+                device=config["device"],
+                compute_type=config["compute_type"]
             )
 
             cache_dir = file_utils.get_addon_models_dir()
             if not tm.load_model(cache_dir):
-                update_props_on_main_thread(0.0, "Error: Failed to load AI model")
+                update_props_on_main_thread(
+                    0.0, 
+                    f"Model '{config['model']}' not ready. Download it first or check console."
+                )
                 bpy.app.timers.register(
                     lambda: setattr(context.scene.subtitle_editor, "is_transcribing", False) or None,
                     first_interval=0.0,
@@ -237,8 +249,15 @@ class SUBTITLE_OT_translate(Operator):
             # "translate": True, # Implied for this operator
             "word_timestamps": props.word_timestamps,
             "vad_filter": props.vad_filter,
+            "vad_parameters": {
+                "threshold": props.vad_threshold,
+                "min_speech_duration_ms": props.min_speech_duration_ms,
+                "min_silence_duration_ms": props.min_silence_duration_ms,
+                "speech_pad_ms": props.speech_pad_ms,
+            },
             "subtitle_channel": props.subtitle_channel,
             "render_fps": scene.render.fps,
+            "compute_type": props.compute_type,
             # Extract filepath on main thread for safety
             "filepath": sequence_utils.get_strip_filepath(strip),
         }
@@ -292,12 +311,17 @@ class SUBTITLE_OT_translate(Operator):
 
             # Initialize transcriber
             tm = transcriber.TranscriptionManager(
-                model_name=config["model"], device=config["device"]
+                model_name=config["model"], 
+                device=config["device"],
+                compute_type=config["compute_type"]
             )
 
             cache_dir = file_utils.get_addon_models_dir()
             if not tm.load_model(cache_dir):
-                update_props_on_main_thread(0.0, "Error: Failed to load AI model")
+                update_props_on_main_thread(
+                    0.0, 
+                    f"Model '{config['model']}' not ready. Download it first or check console."
+                )
                 bpy.app.timers.register(
                     lambda: setattr(context.scene.subtitle_editor, "is_transcribing", False) or None,
                     first_interval=0.0,

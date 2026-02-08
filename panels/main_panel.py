@@ -237,9 +237,31 @@ class SEQUENCER_PT_whisper_panel(Panel):
         row.prop(props, "beam_size", text="Beam Size")
         row.prop(props, "vad_filter", text="")
 
-        # Max Words Per Strip slider
-        row = box.row()
-        row.prop(props, "max_words_per_strip", text="Max Words per Strip", slider=True)
+        # Show Advanced Options toggle
+        box.prop(props, "show_advanced")
+        
+        if props.show_advanced:
+            adv_box = box.box()
+            adv_box.label(text="Advanced Settings", icon="PREFERENCES")
+            
+            # VAD Advanced Settings
+            if props.vad_filter:
+                vad_col = adv_box.column()
+                vad_col.label(text="VAD Parameters (Music/Lyrics Tuning):")
+                vad_col.prop(props, "vad_threshold")
+                vad_col.prop(props, "min_silence_duration_ms")
+                vad_col.prop(props, "min_speech_duration_ms")
+                vad_col.prop(props, "speech_pad_ms")
+                vad_col.separator()
+
+            adv_box.prop(props, "beam_size")
+            adv_box.prop(props, "max_words_per_strip", slider=True)
+            adv_box.prop(props, "wrap_width", slider=True)
+            adv_box.prop(props, "max_chars_per_line")
+        else:
+            # Simple view
+            row = box.row()
+            row.prop(props, "max_words_per_strip", slider=True)
 
         # Channel | Font Size row
         row = box.row(align=True)
