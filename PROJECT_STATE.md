@@ -486,7 +486,7 @@ To enable faster model downloads and avoid rate limits, you can set a Hugging Fa
 
 ## 📚 Development Context Files
 
-Located under `~/.config/opencode/context/project/blender-subtitle-editor/` for agents. **Do not use glob** (for example, `glob` or `context scout` glob heuristics) to discover files—always use ripgrep (`rg`). Example commands:
+Located under `~/.config/opencode/context/project/blender-subtitle-editor/` for agents. **Do not use glob** (for example, `glob` or `context scout` glob heuristics) to discover files—always use ripgrep (`rg`). When running ContextScout, explicitly point it to this folder and include the `rg` commands below instead of letting it wander the repo.
 
 ```bash
 rg --files ~/.config/opencode/context/project/blender-subtitle-editor/             # list context files
