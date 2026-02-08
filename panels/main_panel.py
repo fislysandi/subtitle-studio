@@ -78,8 +78,10 @@ class SEQUENCER_PT_panel(Panel):
             row.prop(scene.subtitle_editor, "text_color")
             row.prop(scene.subtitle_editor, "shadow_color")
             
-            # Apply Style Button
-            box.operator("subtitle.apply_style", text="Apply Style to Selected", icon="BRUSH_DATA")
+            # Line breaks box
+            box = col.box()
+            box.prop(scene.subtitle_editor, "max_chars_per_line")
+            box.operator("subtitle.insert_line_breaks", text="Insert Line Breaks", icon="TEXT")
         else:
             box = layout.box()
             box.label(text="Select a subtitle from the list to edit")

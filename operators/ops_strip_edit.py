@@ -154,9 +154,57 @@ class SUBTITLE_OT_apply_style(Operator):
         return {"FINISHED"}
 
 
+class SUBTITLE_OT_insert_line_breaks(Operator):
+    """Insert line breaks into selected subtitles"""
+
+    bl_idname = "subtitle.insert_line_breaks"
+    bl_label = "Insert Line Breaks"
+    bl_description = "Insert line breaks to fit text within character limit"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        import textwrap
+        
+        scene = context.scene
+        props = scene.subtitle_editor
+        max_chars = props.max_chars_per_line
+        
+        # Get selected sequences
+        selected = sequence_utils.get_selected_strips(context)
+        if not selected:
+            self.report({"WARNING"}, "No strips selected")
+            return {"CANCELLED"}
+            
+        count = 0
+        for strip in selected:
+            if strip.type == "TEXT":
+                # Get current text
+                current_text = strip.text
+                
+                # Unwrap first to remove existing line breaks if any (optional, but good for re-flowing)
+                # But simple assumption: input is just text. 
+                # Let's replace single newlines with spaces to allow re-flow, but keep double newlines?
+                # For simple subtitles, usually just one block.
+                # Let's just wrap existing text.
+                
+                # Logic: Split by newlines first to preserve intentional paragraphs? 
+                # Standard approach: treat as one block for simple wrapping.
+                
+                wrapped_lines = textwrap.wrap(current_text, width=max_chars)
+                new_text = "\n".join(wrapped_lines)
+                
+                if new_text != current_text:
+                    strip.text = new_text
+                    count += 1
+        
+        self.report({"INFO"}, f"Updated {count} strips")
+        return {"FINISHED"}
+
+
 classes = [
     SUBTITLE_OT_refresh_list,
     SUBTITLE_OT_select_strip,
     SUBTITLE_OT_update_text,
     SUBTITLE_OT_apply_style,
+    SUBTITLE_OT_insert_line_breaks,
 ]

@@ -208,6 +208,14 @@ class SubtitleEditorProperties(PropertyGroup):
         subtype="FACTOR",
     )
 
+    max_chars_per_line: IntProperty(
+        name="Max Chars",
+        description="Maximum characters per line when inserting line breaks",
+        default=40,
+        min=10,
+        max=200,
+    )
+
     # Transcription options
     translate: BoolProperty(
         name="Translate to English",

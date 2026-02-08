@@ -202,7 +202,9 @@ subtitle_editor/
 - [x] **Implement batch styling** (copy style to selected)
   - Added `Apply Style to Selected` button in edit panel
   - Applies font size, color, shadow, and alignment to all selected text strips
-- [ ] Add line break insertion
+- [x] **Add line break insertion**
+  - Added `Insert Line Breaks` button and `Max Chars` slider
+  - Auto-wraps selected subtitle text to specified width
 - [ ] Test all import/export formats
 - [ ] Add file browser panels for import/export
 - [ ] Optimize transcription performance
