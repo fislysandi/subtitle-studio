@@ -44,8 +44,9 @@ class SEQUENCER_PT_panel(Panel):
         row.operator("subtitle.export_subtitles", text="", icon="EXPORT")
         row.separator()
 
-        # Navigation
+        # Add / Remove buttons
         row.operator("subtitle.add_strip_at_cursor", text="", icon="ADD")
+        row.operator("subtitle.remove_selected_strip", text="", icon="REMOVE")
         row.separator()
         select_op = row.operator("subtitle.select_strip", text="", icon="TRIA_UP")
         select_op.index = scene.text_strip_items_index

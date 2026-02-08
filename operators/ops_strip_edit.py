@@ -8,19 +8,30 @@ from bpy.types import Operator
 from ..utils import sequence_utils
 
 
+def _is_vse_cursor_visible(space) -> bool:
+    if not space or getattr(space, "type", None) != "SEQUENCE_EDITOR":
+        return False
+
+    overlay = getattr(space, "overlay", None)
+    return bool(overlay and getattr(overlay, "show_cursor", False))
+
+
 def _get_cursor_frame(context, scene) -> int:
+    # Default to the playhead frame so we respect the user's visible cursor.
+    frame_current = getattr(scene, "frame_current_final", scene.frame_current)
     space = context.space_data
-    if space and getattr(space, "type", None) == "SEQUENCE_EDITOR":
+
+    if _is_vse_cursor_visible(space):
         cursor_location = getattr(space, "cursor_location", None)
         if cursor_location is not None:
             return int(round(cursor_location[0]))
 
-    if scene.sequence_editor:
-        cursor2d = getattr(scene.sequence_editor, "cursor2d", None)
-        if cursor2d is not None:
-            return int(round(cursor2d[0]))
+        if scene.sequence_editor:
+            cursor2d = getattr(scene.sequence_editor, "cursor2d", None)
+            if cursor2d is not None:
+                return int(round(cursor2d[0]))
 
-    return scene.frame_current
+    return int(round(frame_current))
 
 
 def _get_default_duration(scene) -> int:
@@ -89,11 +100,11 @@ class SUBTITLE_OT_select_strip(Operator):
 
 
 class SUBTITLE_OT_add_strip_at_cursor(Operator):
-    """Add a subtitle strip at the 2D cursor position"""
+    """Add a subtitle strip at the timeline cursor position"""
 
     bl_idname = "subtitle.add_strip_at_cursor"
     bl_label = "Add Subtitle at Cursor"
-    bl_description = "Add a subtitle strip at the 2D cursor position"
+    bl_description = "Add a subtitle strip at the current timeline cursor"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
@@ -181,6 +192,59 @@ class SUBTITLE_OT_add_strip_at_cursor(Operator):
 
         scene.subtitle_editor.current_text = strip.text
         scene.frame_current = current_frame
+        return {"FINISHED"}
+
+
+class SUBTITLE_OT_remove_selected_strip(Operator):
+    """Remove the currently selected subtitle strip"""
+
+    bl_idname = "subtitle.remove_selected_strip"
+    bl_label = "Remove Subtitle"
+    bl_description = "Remove the selected subtitle strip"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        scene = context.scene
+        if not scene:
+            self.report({"WARNING"}, "No active scene")
+            return {"CANCELLED"}
+
+        index = scene.text_strip_items_index
+        items = scene.text_strip_items
+
+        if index < 0 or index >= len(items):
+            self.report({"WARNING"}, "No subtitle selected")
+            return {"CANCELLED"}
+
+        item = items[index]
+
+        if not scene.sequence_editor:
+            self.report({"WARNING"}, "No sequence editor to remove from")
+            return {"CANCELLED"}
+
+        removed = False
+        for strip in list(scene.sequence_editor.strips):
+            if strip.name == item.name and strip.type == "TEXT":
+                scene.sequence_editor.strips.remove(strip)
+                removed = True
+                break
+
+        if not removed:
+            self.report({"WARNING"}, "Selected subtitle not found in sequencer")
+            return {"CANCELLED"}
+
+        sequence_utils.refresh_list(context)
+
+        new_length = len(scene.text_strip_items)
+        if new_length == 0:
+            scene.text_strip_items_index = -1
+            scene.subtitle_editor.current_text = ""
+        else:
+            scene.text_strip_items_index = min(index, new_length - 1)
+            scene.subtitle_editor.current_text = scene.text_strip_items[
+                scene.text_strip_items_index
+            ].text
+
         return {"FINISHED"}
 
 
@@ -347,6 +411,7 @@ classes = [
     SUBTITLE_OT_refresh_list,
     SUBTITLE_OT_select_strip,
     SUBTITLE_OT_add_strip_at_cursor,
+    SUBTITLE_OT_remove_selected_strip,
     SUBTITLE_OT_update_text,
     SUBTITLE_OT_apply_style,
     SUBTITLE_OT_insert_line_breaks,
