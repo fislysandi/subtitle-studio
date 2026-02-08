@@ -15,6 +15,7 @@ from bpy.types import PropertyGroup
 
 # Import language items directly
 from .constants import LANGUAGE_ITEMS
+from .utils import file_utils
 
 
 class TextStripItem(PropertyGroup):
@@ -423,6 +424,17 @@ class SubtitleEditorProperties(PropertyGroup):
         max=1.0,
         default=0.0,
         subtype="PERCENTAGE",
+    )
+
+    def _get_is_cached(self):
+        """Check if current model is cached"""
+        # Be careful not to cause IO lag, file_utils.is_model_cached is fast
+        return file_utils.is_model_cached(self.model)
+
+    is_cached: BoolProperty(
+        name="Model Cached",
+        description="Whether the selected model is already downloaded",
+        get=_get_is_cached,
     )
 
     # Text strip appearance

@@ -209,8 +209,15 @@ class SEQUENCER_PT_whisper_panel(Panel):
             # Show status message
             box.label(text=props.model_download_status, icon="FILE_REFRESH")
         else:
-            # Show download button
-            row.operator("subtitle.download_model", text="Download", icon="IMPORT")
+            if props.is_cached:
+                # Model is ready
+                col_dl = box.column(align=True)
+                col_dl.label(text="Model Ready", icon="CHECKMARK")
+                # Optional: Redownload button (smaller/different icon)
+                col_dl.operator("subtitle.download_model", text="Redownload Model", icon="FILE_REFRESH")
+            else:
+                # Show download button
+                row.operator("subtitle.download_model", text="Download", icon="IMPORT")
 
             # Show model size info when not downloading
             if props.model in model_sizes:

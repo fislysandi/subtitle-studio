@@ -35,3 +35,16 @@ def ensure_dir(path: str) -> str:
     """Ensure directory exists"""
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def is_model_cached(model_name: str) -> bool:
+    """Check if model is cached (fast check)"""
+    models_dir = get_addon_models_dir()
+    model_path = os.path.join(models_dir, model_name)
+    
+    # Check for essential files (same logic as DownloadManager)
+    # faster-whisper needs model.bin and config.json
+    has_bin = os.path.exists(os.path.join(model_path, "model.bin"))
+    has_config = os.path.exists(os.path.join(model_path, "config.json"))
+    
+    return has_bin and has_config
