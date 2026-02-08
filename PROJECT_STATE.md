@@ -232,7 +232,7 @@ cat PROJECT_STATE.md
 ## 📝 Recent Changes
 
 ### 1. Critical Stability Fixes (Latest)
-- **Model Download**: Fixed `AttributeError: '_get_repo_id'` in `DownloadManager`.
+- **Model Download**: Fixed `AttributeError` (missing `_get_repo_id`) and `IOError` (missing directory/symlinks) in `DownloadManager`.
 - **Thread Safety**: Refactored `ops_transcribe.py` to decouple background threads from Blender properties.
 - **Error Handling**: Replaced bare `except:` clauses with `except Exception:` in `props.py` and `ops_dependencies.py`.
 

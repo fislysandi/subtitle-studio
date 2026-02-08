@@ -327,13 +327,12 @@ class DownloadManager:
             ProgressTracker._cancel_event = self._cancel_event
 
             # Use local_dir to download directly to our flat folder structure
-            # local_dir_use_symlinks=False ensures real files are created
             model_dir = self._get_model_dir(model_name)
+            model_dir.mkdir(parents=True, exist_ok=True)
             
             snapshot_download(
                 repo_id=repo_id,
                 local_dir=str(model_dir),
-                local_dir_use_symlinks=False,
                 token=token,
                 resume_download=None,  # Not needed with local_dir usually, but safe to omit
                 tqdm_class=ProgressTracker,
