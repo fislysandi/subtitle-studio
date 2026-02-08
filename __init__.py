@@ -32,7 +32,7 @@ from .props import SubtitleEditorProperties, TextStripItem
 
 
 class SubtitleEditorAddonPreferences(AddonPreferences):
-    """Addon preferences for Subtitle Editor"""
+    """Addon preferences for Subtitle Studio"""
 
     bl_idname = __addon_name__
 
@@ -125,7 +125,7 @@ def register():
     load_dictionary(dictionary)
     bpy.app.translations.register(__addon_name__, dictionary)
 
-    print(f"[Subtitle Editor] {__addon_name__} addon registered successfully")
+    print(f"[Subtitle Studio] {__addon_name__} addon registered successfully")
 
 
 def unregister():
@@ -143,7 +143,7 @@ def unregister():
     # Remove properties
     remove_properties(_addon_properties)
 
-    print(f"[Subtitle Editor] {__addon_name__} addon unregistered")
+    print(f"[Subtitle Studio] {__addon_name__} addon unregistered")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 """
-Tests for Subtitle Editor
+Tests for Subtitle Studio
 """
 
 import unittest

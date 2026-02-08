@@ -70,7 +70,9 @@ class SUBTITLE_OT_transcribe(Operator):
 
     def _transcribe_thread(self, context, strip, config):
         """Run transcription in background thread"""
-        print(f"[Subtitle Editor] Starting transcription thread for {config['filepath']}")
+        print(
+            f"[Subtitle Studio] Starting transcription thread for {config['filepath']}"
+        )
         # Thread-safe storage for progress data
         progress_data = {"progress": 0.0, "text": "Starting..."}
 
@@ -92,28 +94,31 @@ class SUBTITLE_OT_transcribe(Operator):
         try:
             # Get filepath from config (extracted on main thread)
             filepath = config["filepath"]
-            
+
             # NOTE: We do NOT check filepath here again, assuming it was checked in execute
             if not filepath:
-                 # Should not happen if execute checks it
+                # Should not happen if execute checks it
                 update_props_on_main_thread(0.0, "Error: Invalid file path")
                 return
 
             # Initialize transcriber
             tm = transcriber.TranscriptionManager(
-                model_name=config["model"], 
+                model_name=config["model"],
                 device=config["device"],
-                compute_type=config["compute_type"]
+                compute_type=config["compute_type"],
             )
 
             cache_dir = file_utils.get_addon_models_dir()
             if not tm.load_model(cache_dir):
                 update_props_on_main_thread(
-                    0.0, 
-                    f"Model '{config['model']}' not ready. Download it first or check console."
+                    0.0,
+                    f"Model '{config['model']}' not ready. Download it first or check console.",
                 )
                 bpy.app.timers.register(
-                    lambda: setattr(context.scene.subtitle_editor, "is_transcribing", False) or None,
+                    lambda: setattr(
+                        context.scene.subtitle_editor, "is_transcribing", False
+                    )
+                    or None,
                     first_interval=0.0,
                 )
                 return
@@ -135,7 +140,9 @@ class SUBTITLE_OT_transcribe(Operator):
             segments = list(
                 tm.transcribe(
                     audio_path,
-                    language=config["language"] if config["language"] != "auto" else None,
+                    language=config["language"]
+                    if config["language"] != "auto"
+                    else None,
                     translate=config["translate"],
                     word_timestamps=config["word_timestamps"],
                     vad_filter=config["vad_filter"],
@@ -144,7 +151,8 @@ class SUBTITLE_OT_transcribe(Operator):
 
             # Create text strips in main thread
             bpy.app.timers.register(
-                lambda: self._create_strips(context, segments, config), first_interval=0.0
+                lambda: self._create_strips(context, segments, config),
+                first_interval=0.0,
             )
 
             # Clean up temp file
@@ -184,15 +192,15 @@ class SUBTITLE_OT_transcribe(Operator):
         # The existing logic finds a completely empty channel? No, it finding a channel number higher than any existing strip?
         # "if seq.channel >= channel: channel = seq.channel + 1" -> this finds the *highest* used channel + 1.
         # This completely ignores "3" if there's something on 4.
-        
+
         # Correct logic for "use defined channel":
         # Just use the channel provided. If the user says channel 5, put it on channel 5.
         # If they want it on a new channel, they change the setting.
         # However, to avoid overwriting/mess, maybe we should just use it.
-        
+
         # Let's trust the user's "defined by... subtitle_channel" request literally.
         # But we need render_fps too.
-        
+
         render_fps = config["render_fps"]
 
         # Create strips
@@ -240,7 +248,7 @@ class SUBTITLE_OT_translate(Operator):
         if not strip:
             self.report({"ERROR"}, "Please select an audio or video strip")
             return {"CANCELLED"}
-            
+
         # Extract settings to dictionary (read on main thread)
         config = {
             "model": props.model,
@@ -281,7 +289,7 @@ class SUBTITLE_OT_translate(Operator):
 
     def _translate_thread(self, context, strip, config):
         """Run translation in background thread"""
-        print(f"[Subtitle Editor] Starting translation thread for {config['filepath']}")
+        print(f"[Subtitle Studio] Starting translation thread for {config['filepath']}")
         # Thread-safe storage for progress data
         progress_data = {"progress": 0.0, "text": "Starting..."}
 
@@ -302,28 +310,31 @@ class SUBTITLE_OT_translate(Operator):
         try:
             # Get filepath from config (extracted on main thread)
             filepath = config["filepath"]
-            
+
             # NOTE: We do NOT check filepath here again, assuming it was checked in execute
             if not filepath:
-                 # Should not happen if execute checks it
+                # Should not happen if execute checks it
                 update_props_on_main_thread(0.0, "Error: Invalid file path")
                 return
 
             # Initialize transcriber
             tm = transcriber.TranscriptionManager(
-                model_name=config["model"], 
+                model_name=config["model"],
                 device=config["device"],
-                compute_type=config["compute_type"]
+                compute_type=config["compute_type"],
             )
 
             cache_dir = file_utils.get_addon_models_dir()
             if not tm.load_model(cache_dir):
                 update_props_on_main_thread(
-                    0.0, 
-                    f"Model '{config['model']}' not ready. Download it first or check console."
+                    0.0,
+                    f"Model '{config['model']}' not ready. Download it first or check console.",
                 )
                 bpy.app.timers.register(
-                    lambda: setattr(context.scene.subtitle_editor, "is_transcribing", False) or None,
+                    lambda: setattr(
+                        context.scene.subtitle_editor, "is_transcribing", False
+                    )
+                    or None,
                     first_interval=0.0,
                 )
                 return
@@ -345,7 +356,9 @@ class SUBTITLE_OT_translate(Operator):
             segments = list(
                 tm.transcribe(
                     audio_path,
-                    language=config["language"] if config["language"] != "auto" else None,
+                    language=config["language"]
+                    if config["language"] != "auto"
+                    else None,
                     translate=True,  # Force translate
                     word_timestamps=config["word_timestamps"],
                     vad_filter=config["vad_filter"],
@@ -354,7 +367,8 @@ class SUBTITLE_OT_translate(Operator):
 
             # Create text strips in main thread
             bpy.app.timers.register(
-                lambda: self._create_strips(context, segments, config), first_interval=0.0
+                lambda: self._create_strips(context, segments, config),
+                first_interval=0.0,
             )
 
             # Clean up temp file
@@ -367,8 +381,9 @@ class SUBTITLE_OT_translate(Operator):
 
         except Exception as e:
             import traceback
+
             traceback.print_exc()
-            print(f"[Subtitle Editor] Error in translation thread: {e}")
+            print(f"[Subtitle Studio] Error in translation thread: {e}")
             update_props_on_main_thread(0.0, f"Error: {str(e)}")
         finally:
             # Schedule cleanup on main thread
@@ -394,7 +409,7 @@ class SUBTITLE_OT_translate(Operator):
                 if seq.channel >= channel:
                     channel = seq.channel + 1
             channel = min(channel, 128)
-        
+
         render_fps = config["render_fps"]
 
         # Create strips

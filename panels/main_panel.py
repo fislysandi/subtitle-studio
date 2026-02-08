@@ -1,5 +1,5 @@
 """
-UI Panels for Subtitle Editor
+UI Panels for Subtitle Studio
 Simplified version matching upstream layout but using existing operators
 """
 
@@ -8,7 +8,7 @@ from bpy.types import Panel
 
 
 class SEQUENCER_PT_panel(Panel):
-    """Main Subtitle Editor Panel"""
+    """Main Subtitle Studio Panel"""
 
     bl_idname = "SEQUENCER_PT_panel"
     bl_label = "Subtitle Studio"

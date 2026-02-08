@@ -1,4 +1,4 @@
-# Subtitle Editor Addon - Development Context
+# Subtitle Studio Addon - Development Context
 
 ## Project Overview
 Blender addon for AI-powered subtitle transcription and editing using Faster Whisper.

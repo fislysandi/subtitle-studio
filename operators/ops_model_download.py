@@ -167,7 +167,7 @@ class SUBTITLE_OT_download_model(Operator):
                 self._download_manager.download(model_name, token=token)
         except Exception as e:
             # Error is handled in download_manager
-            print(f"[Subtitle Editor] Download error: {e}")
+            print(f"[Subtitle Studio] Download error: {e}")
 
     def _cancel_download(self, context):
         """Cancel the download and clean up."""

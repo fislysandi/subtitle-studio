@@ -1,5 +1,5 @@
 """
-Constants for Subtitle Editor
+Constants for Subtitle Studio
 """
 
 # =============================================================================

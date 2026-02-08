@@ -24,7 +24,7 @@ class SUBTITLE_OT_check_dependencies(Operator):
         props = context.scene.subtitle_editor
 
         # Debug: Print Python paths
-        print("\n=== Subtitle Editor Dependency Check ===")
+        print("\n=== Subtitle Studio Dependency Check ===")
         print(f"Python executable: {sys.executable}")
         print(f"Python version: {sys.version}")
         print(f"sys.path contains {len(sys.path)} paths:")
@@ -120,7 +120,7 @@ class SUBTITLE_OT_check_dependencies(Operator):
         props = context.scene.subtitle_editor
 
         # Debug: Print Python paths
-        print("\n=== Subtitle Editor Dependency Check ===")
+        print("\n=== Subtitle Studio Dependency Check ===")
         print(f"Python executable: {sys.executable}")
         print(f"Python version: {sys.version}")
         print(f"sys.path contains {len(sys.path)} paths:")
@@ -252,16 +252,14 @@ class SUBTITLE_OT_install_dependencies(Operator):
 
             # Retrieve use_uv from Addon Preferences
             addon_prefs = context.preferences.addons[__addon_name__].preferences
-            
+
             # Install all packages in a single command using UV dependency manager
             props.deps_install_status = "Bootstrapping UV & resolving dependencies..."
-            
+
             # This handles uv bootstrap automatically if needed
             # We pass numpy<2.0 as constraint
             cmd = DependencyManager.get_install_command(
-                packages, 
-                constraint="numpy<2.0",
-                use_uv=addon_prefs.use_uv
+                packages, constraint="numpy<2.0", use_uv=addon_prefs.use_uv
             )
 
             print(f"Running command: {' '.join(cmd)}")
@@ -271,14 +269,16 @@ class SUBTITLE_OT_install_dependencies(Operator):
             result = subprocess.run(cmd, check=False)
 
             if result.returncode != 0:
-                props.deps_install_status = "Error: Installation failed. Check System Console for details."
+                props.deps_install_status = (
+                    "Error: Installation failed. Check System Console for details."
+                )
                 props.is_installing_deps = False
                 return
 
             props.deps_install_status = (
                 "Dependencies installed! Install PyTorch below for GPU support."
             )
-            
+
             # Re-check dependencies
             bpy.app.timers.register(
                 lambda: bpy.ops.subtitle.check_dependencies(), first_interval=0.5
@@ -402,10 +402,10 @@ class SUBTITLE_OT_install_pytorch(Operator):
             # IMPORTANT: numpy<2.0 is required for compatibility with aud module
             # Use DependencyManager to get uv/pip command
             cmd = DependencyManager.get_install_command(
-                packages, 
+                packages,
                 constraint="numpy<2.0",
                 extra_args=extra_args,
-                use_uv=addon_prefs.use_uv
+                use_uv=addon_prefs.use_uv,
             )
 
             print(f"Running command: {' '.join(cmd)}")
@@ -415,7 +415,9 @@ class SUBTITLE_OT_install_pytorch(Operator):
             result = subprocess.run(cmd, check=False)
 
             if result.returncode != 0:
-                props.pytorch_install_status = "Error: Installation failed. Check System Console for details."
+                props.pytorch_install_status = (
+                    "Error: Installation failed. Check System Console for details."
+                )
                 props.is_installing_pytorch = False
                 return
 

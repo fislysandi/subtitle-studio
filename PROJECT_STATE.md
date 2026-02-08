@@ -1,4 +1,4 @@
-# Subtitle Editor - Project State
+# Subtitle Studio - Project State
 
 **Last Updated:** 2026-02-08 (NumPy Compatibility Fix)  
 **Addon Location:** `addons/subtitle_editor/`
@@ -11,7 +11,7 @@
 
 ## 🎬 About This Addon
 
-**Subtitle Editor** - AI-powered subtitle transcription and editing for Blender Video Sequence Editor (VSE)
+**Subtitle Studio** - AI-powered subtitle transcription and editing for Blender Video Sequence Editor (VSE)
 
 **Forked from:** https://github.com/tin2tin/Subtitle_Editor  
 **Original Author:** tin2tin
@@ -58,7 +58,7 @@
   - SEQUENCER_PT_whisper_panel (transcription settings)
   - SEQUENCER_PT_edit_panel (subtitle editing)
 - [x] UIList displays subtitle text
-- [x] Category: "Subtitle Editor"
+- [x] Category: "Subtitle Studio"
 
 ## 🚀 Available Commands
 
@@ -464,7 +464,7 @@ To enable faster model downloads and avoid rate limits, you can set a Hugging Fa
 ### Setting the Token in Blender:
 1. Open Blender
 2. Go to **Edit > Preferences > Add-ons**
-3. Find "Subtitle Editor" and expand it
+3. Find "Subtitle Studio" and expand it
 4. Click on the addon preferences
 5. Paste your token in the "Hugging Face Token" field
 6. The token will be used automatically for all model downloads
@@ -525,4 +525,4 @@ Comprehensive agent guide:
 
 ---
 
-**Current context loaded:** ✅ Subtitle Editor with Framework Integration
+**Current context loaded:** ✅ Subtitle Studio with Framework Integration

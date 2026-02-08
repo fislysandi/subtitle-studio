@@ -1,5 +1,5 @@
 """
-Property Groups for Subtitle Editor
+Property Groups for Subtitle Studio
 """
 
 import bpy
@@ -55,7 +55,7 @@ class TextStripItem(PropertyGroup):
 
 
 class SubtitleEditorProperties(PropertyGroup):
-    """Main properties for the Subtitle Editor"""
+    """Main properties for the Subtitle Studio"""
 
     # Transcription settings
     language: EnumProperty(
