@@ -1,6 +1,6 @@
 # Subtitle Editor - Project State
 
-**Last Updated:** 2025-02-07 (Commit: c4bb551 - Code Review & Agent Context)  
+**Last Updated:** 2025-02-07 (Commit: 1c8793d - Dependency Download Operators)  
 **Addon Location:** `addons/subtitle_editor/`
 
 ## 📍 Current Status
@@ -96,7 +96,9 @@ subtitle_editor/
 ├── operators/               # Blender operators (auto-registered)
 │   ├── __init__.py
 │   ├── ops_dependencies.py  # Dependency management operators
+│   ├── ops_dependency_download.py  # NEW: Non-blocking dependency download
 │   ├── ops_import_export.py # Import/export operators
+│   ├── ops_model_download.py       # Model download (subprocess)
 │   ├── ops_strip_edit.py    # List edit operators
 │   └── ops_transcribe.py    # Transcription & translation operators
 │
@@ -140,7 +142,9 @@ subtitle_editor/
 - `subtitle.install_dependencies` - Install missing dependencies
 - `subtitle.check_gpu` - Check GPU availability for PyTorch
 - `subtitle.install_pytorch` - Install PyTorch with selected CUDA/ROCm version
-- `subtitle.download_model` - Download selected Whisper model on demand
+- `subtitle.download_model` - Download selected Whisper model on demand (subprocess, terminal output)
+- `subtitle.download_dependencies` - Install Python packages with modal operator (non-blocking)
+- `subtitle.cancel_download_deps` - Cancel dependency installation
 
 ### Panels
 - `SEQUENCER_PT_panel` - Main panel with UIList and integrated editing
@@ -217,7 +221,24 @@ cat PROJECT_STATE.md
 
 ## 📝 Recent Changes
 
-### 1. Code Review & Agent Context (Latest)
+### 1. Dependency Download Operators (Latest)
+- Added `SUBTITLE_OT_download_dependencies` - Non-blocking modal operator for pip installs
+- Added `SUBTITLE_OT_cancel_download_deps` - Cancel operator for dependency downloads
+- Uses proper modal operator pattern with background threading
+- Shows progress in Blender status bar
+- Thread-safe shared state with locks
+- File: `operators/ops_dependency_download.py`
+
+### 2. Model Download Simplification
+- Refactored model download to use subprocess approach
+- Removed complex modal operator UI (was blocking)
+- Downloads run in separate Python process (avoids GIL)
+- Real-time output streamed to terminal
+- Simplified UI: just Download button + model size
+- Progress shown in terminal only
+- File: `operators/ops_model_download.py`
+
+### 3. Code Review & Agent Context
 - Comprehensive code review by CodeReviewer agent
 - Overall quality: **GOOD** ✅ Production-ready after thread safety fix
 - Created `.opencode/context.md` - Core development standards
@@ -291,8 +312,8 @@ cat PROJECT_STATE.md
 
 ## 📊 Quick Stats
 
-- **Total Files:** 29
-- **Operators:** 9
+- **Total Files:** 31
+- **Operators:** 11
 - **Panels:** 2
 - **Property Groups:** 2
 - **Dependencies:** 3 (faster-whisper, pysubs2, onnxruntime)
@@ -329,6 +350,28 @@ cat PROJECT_STATE.md
 - **Sequences** - Use `sequences` (Blender 5.0+), not `sequences_all` (deprecated)
 - **Text Strips** - `bpy.types.TextSequence` for subtitle strips
 - **Scene Sequence Editor** - `context.scene.sequence_editor`
+
+## 📦 Download System Architecture
+
+The addon uses different approaches for different download types:
+
+### Model Download (`subtitle.download_model`)
+- **Approach**: Subprocess (separate Python process)
+- **Why**: Avoids GIL, simple, reliable resume support
+- **Progress**: Terminal output only
+- **Cancel**: Not supported (close Blender to cancel)
+
+### Dependency Download (`subtitle.download_dependencies`)
+- **Approach**: Modal operator + background thread
+- **Why**: Non-blocking UI with progress bar
+- **Progress**: Blender status bar + thread-safe state
+- **Cancel**: Supported via cancel operator
+
+### PyTorch Installation (`subtitle.install_pytorch`)
+- **Approach**: Modal operator + background thread
+- **Why**: Complex installation with CUDA/ROCm selection
+- **Progress**: Custom UI properties
+- **Cancel**: Supported
 
 ## 🔐 Hugging Face Token Configuration (Optional)
 
