@@ -286,7 +286,7 @@ class SubtitleEditorProperties(PropertyGroup):
             try:
                 import bpy
 
-                for strip in context.scene.sequence_editor.sequences:
+                for strip in context.scene.sequence_editor.strips:
                     if strip.name == items[index].name:
                         if hasattr(strip, "text"):
                             strip.text = self.current_text

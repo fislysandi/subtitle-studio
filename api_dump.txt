@@ -1,0 +1,2 @@
+Type: <class 'bpy.types.SequenceEditor'>
+Dir: ['__doc__', '__module__', '__slots__', 'active_strip', 'bl_rna', 'cache_final_size', 'cache_raw_size', 'channels', 'display_stack', 'meta_stack', 'overlay_frame', 'proxy_dir', 'proxy_storage', 'rna_type', 'selected_retiming_keys', 'show_missing_media', 'show_overlay_frame', 'strips', 'strips_all', 'use_cache_final', 'use_cache_raw', 'use_overlay_frame_lock', 'use_prefetch']

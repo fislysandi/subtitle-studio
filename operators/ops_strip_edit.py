@@ -41,7 +41,7 @@ class SUBTITLE_OT_select_strip(Operator):
 
         # Find and select the strip
         if scene.sequence_editor:
-            for strip in scene.sequence_editor.sequences:
+            for strip in scene.sequence_editor.strips:
                 strip.select = strip.name == item.name
                 if strip.name == item.name:
                     # Jump to strip
@@ -77,7 +77,7 @@ class SUBTITLE_OT_update_text(Operator):
 
         # Update actual strip
         if scene.sequence_editor:
-            for strip in scene.sequence_editor.sequences:
+            for strip in scene.sequence_editor.strips:
                 if strip.name == item.name and strip.type == "TEXT":
                     strip.text = new_text
                     break

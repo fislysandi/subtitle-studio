@@ -203,6 +203,7 @@ subtitle_editor/
   - Added `Apply Style to Selected` button in edit panel
   - Applies font size, color, shadow, and alignment to all selected text strips
 - [x] **Model Persistence UI**: Fixed issue where users thought they had to redownload models. Added "Model Ready" indicator to UI.
+- [x] **Blender 5.0 Compatibility**: Replaced deprecated `sequence_editor.sequences` with `sequence_editor.strips`.
 - [ ] Test all import/export formats
 - [ ] Add file browser panels for import/export
 - [ ] Optimize transcription performance
