@@ -29,7 +29,7 @@ class DependencyDownloadState:
         self._error_message = None
         self._success = False
 
-    def update(self, progress: float = None, status: str = None):
+    def update(self, progress: Optional[float] = None, status: Optional[str] = None):
         """Thread-safe update of progress and status"""
         with self._lock:
             if progress is not None:
@@ -47,7 +47,7 @@ class DependencyDownloadState:
         with self._lock:
             return self._status
 
-    def mark_complete(self, success: bool = True, error: str = None):
+    def mark_complete(self, success: bool = True, error: Optional[str] = None):
         """Mark download as complete"""
         with self._lock:
             self._is_complete = True
@@ -111,6 +111,16 @@ class SUBTITLE_OT_download_dependencies(Operator):
             {'FINISHED'} - Complete the operator
             {'CANCELLED'} - Cancel the operator
         """
+        if event.type == "ESC":
+            self._request_cancel(context)
+            self.report({"WARNING"}, "Download cancelled")
+            return {"CANCELLED"}
+
+        if not self._state:
+            self.report({"ERROR"}, "Download state not initialized")
+            self._cleanup(context)
+            return {"CANCELLED"}
+
         # Only update on timer events (every 0.1 seconds)
         if event.type == "TIMER":
             # Get current progress from shared state (thread-safe)
@@ -120,6 +130,7 @@ class SUBTITLE_OT_download_dependencies(Operator):
             # Update Blender's built-in progress bar in status bar
             wm = context.window_manager
             wm.progress_update(int(progress * 100))
+            context.workspace.status_text_set(status)
 
             # Check if complete
             if self._state.is_complete():
@@ -134,7 +145,7 @@ class SUBTITLE_OT_download_dependencies(Operator):
                     self.report({"ERROR"}, f"Installation failed: {error}")
 
                 # Clean up and finish
-                self.cancel(context)
+                self._cleanup(context)
                 return {"FINISHED"}
 
             # Force UI redraw to show progress
@@ -188,15 +199,21 @@ class SUBTITLE_OT_download_dependencies(Operator):
         Clean up when operator finishes or is cancelled.
         Always remove timer to prevent memory leaks.
         """
-        # Signal cancellation to background thread
+        self._request_cancel(context)
+
+    def _request_cancel(self, context):
+        """Signal cancellation and clean up UI."""
         if self._state:
             self._state.mark_cancelled()
+        self._cleanup(context)
 
-        # Remove timer (critical to prevent memory leaks)
+    def _cleanup(self, context):
+        """Clean up timer and status/progress UI."""
+        context.workspace.status_text_set(None)
         if self._timer:
             wm = context.window_manager
             wm.event_timer_remove(self._timer)
-            wm.progress_end()  # End progress bar
+            wm.progress_end()
             self._timer = None
 
     def _download_worker(self, packages: list, state: DependencyDownloadState):
