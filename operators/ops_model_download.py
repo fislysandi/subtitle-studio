@@ -1,147 +1,213 @@
 """
-Simple Model Download - Subprocess Approach
+Model Download Operator - Non-Blocking Modal Pattern
 
-No UI, no modal operators, just terminal output.
-Uses subprocess to avoid GIL issues completely.
+Downloads Whisper models with:
+- Real-time progress tracking via Blender's native progress bar
+- Full UI responsiveness during download
+- Cancellation support (Cancel button or ESC key)
 """
 
 import bpy
-import subprocess
-import sys
-import os
+import threading
 from bpy.types import Operator
+from ..core.download_manager import DownloadManager, DownloadStatus, create_download_manager
 from ..utils import file_utils
 
 
 class SUBTITLE_OT_download_model(Operator):
-    """Download model in subprocess - terminal output only"""
+    """Download Whisper model with non-blocking progress"""
 
     bl_idname = "subtitle.download_model"
     bl_label = "Download Model"
-    bl_description = "Download Whisper model (output in terminal)"
+    bl_description = "Download the selected Whisper model"
+    bl_options = {"REGISTER"}
+
+    # Instance variables (not class variables) for proper isolation
+    _timer: bpy.types.Timer = None
+    _download_manager: DownloadManager = None
+    _thread: threading.Thread = None
+    _model_name: str = ""
+    _finished: bool = False
+
+    def invoke(self, context, event):
+        """
+        Start modal operator via invoke (not execute).
+        invoke() is required for proper interactive modal behavior.
+        """
+        props = context.scene.subtitle_editor
+
+        # Check if already downloading
+        if props.is_downloading_model:
+            self.report({"WARNING"}, "Download already in progress")
+            return {"CANCELLED"}
+
+        # Get model name
+        self._model_name = props.model
+
+        # Check dependencies
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError:
+            self.report({"ERROR"}, "huggingface_hub not installed. Install dependencies first.")
+            return {"CANCELLED"}
+
+        # Create download manager
+        cache_dir = file_utils.get_addon_models_dir()
+        self._download_manager = create_download_manager(cache_dir)
+
+        # Check if already cached
+        if self._download_manager.is_cached(self._model_name):
+            self.report({"INFO"}, f"Model '{self._model_name}' already downloaded")
+            return {"FINISHED"}
+
+        # Get HF token from preferences
+        token = None
+        prefs = context.preferences.addons.get("subtitle_editor")
+        if prefs and hasattr(prefs, "preferences"):
+            token = getattr(prefs.preferences, "hf_token", None) or None
+
+        # Initialize UI state
+        props.is_downloading_model = True
+        props.model_download_progress = 0.0
+        props.model_download_status = f"Starting download of '{self._model_name}'..."
+        self._finished = False
+
+        # Start background download thread
+        self._thread = threading.Thread(
+            target=self._download_worker,
+            args=(self._model_name, token),
+            daemon=True,
+        )
+        self._thread.start()
+
+        # Start Blender's native progress bar
+        wm = context.window_manager
+        wm.progress_begin(0, 100)
+
+        # Add timer for polling (0.1 seconds = 10 updates/sec)
+        self._timer = wm.event_timer_add(0.1, window=context.window)
+
+        # Register modal handler
+        wm.modal_handler_add(self)
+
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        """
+        Called repeatedly by Blender's event loop.
+        Must return quickly - heavy work is in background thread.
+        """
+        props = context.scene.subtitle_editor
+
+        # Handle ESC key for cancellation
+        if event.type == "ESC":
+            self._cancel_download(context)
+            self.report({"WARNING"}, "Download cancelled")
+            return {"CANCELLED"}
+
+        # Handle timer events
+        if event.type == "TIMER":
+            # Check for external cancellation (via cancel button)
+            if not props.is_downloading_model and not self._finished:
+                self._download_manager.cancel()
+
+            # Poll progress from download manager
+            if self._download_manager:
+                progress = self._download_manager.get_progress()
+
+                # Update UI properties
+                props.model_download_progress = progress.percentage
+                props.model_download_status = progress.message
+
+                # Update Blender's native progress bar (0-100)
+                context.window_manager.progress_update(int(progress.percentage * 100))
+
+                # Check if complete
+                if progress.status in (
+                    DownloadStatus.COMPLETE,
+                    DownloadStatus.ERROR,
+                    DownloadStatus.CANCELLED,
+                ):
+                    self._finished = True
+
+                    # Report result
+                    if progress.status == DownloadStatus.COMPLETE:
+                        self.report({"INFO"}, progress.message)
+                    elif progress.status == DownloadStatus.ERROR:
+                        self.report({"ERROR"}, progress.message)
+                    elif progress.status == DownloadStatus.CANCELLED:
+                        self.report({"WARNING"}, "Download cancelled")
+
+                    # Clean up and finish
+                    self._cleanup(context)
+                    return {"FINISHED"}
+
+            # Force UI redraw to update progress
+            for area in context.screen.areas:
+                area.tag_redraw()
+
+        # Return PASS_THROUGH to keep Blender responsive
+        return {"PASS_THROUGH"}
+
+    def _download_worker(self, model_name: str, token: str = None):
+        """Background thread that performs the download."""
+        try:
+            self._download_manager.download(model_name, token=token)
+        except Exception as e:
+            # Error is handled in download_manager
+            print(f"[Subtitle Editor] Download error: {e}")
+
+    def _cancel_download(self, context):
+        """Cancel the download and clean up."""
+        if self._download_manager:
+            self._download_manager.cancel()
+        self._cleanup(context)
+
+    def _cleanup(self, context):
+        """Clean up timer and state."""
+        props = context.scene.subtitle_editor
+
+        # Remove timer
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
+
+        # End Blender's progress bar
+        context.window_manager.progress_end()
+
+        # Reset state
+        props.is_downloading_model = False
+        self._download_manager = None
+        self._thread = None
+
+    def cancel(self, context):
+        """Called when operator is cancelled externally."""
+        self._cancel_download(context)
+
+
+class SUBTITLE_OT_cancel_download(Operator):
+    """Cancel the current model download"""
+
+    bl_idname = "subtitle.cancel_download"
+    bl_label = "Cancel Download"
+    bl_description = "Cancel the current model download"
     bl_options = {"REGISTER"}
 
     def execute(self, context):
+        """Signal cancellation by setting is_downloading_model to False."""
         props = context.scene.subtitle_editor
-        model_name = props.model
-
-        # Get cache directory
-        cache_dir = file_utils.get_addon_models_dir()
-
-        # Get optional HF token
-        preferences = context.preferences.addons.get("subtitle_editor")
-        hf_token = None
-        if preferences and hasattr(preferences, "preferences"):
-            hf_token = preferences.preferences.hf_token or None
-
-        print(f"\n{'=' * 60}")
-        print(f"[Subtitle Editor] Starting download: {model_name}")
-        print(f"[Subtitle Editor] Cache directory: {cache_dir}")
-        print(
-            f"[Subtitle Editor] HF Token: {'Set' if hf_token else 'Not set (anonymous)'}"
-        )
-        print(f"{'=' * 60}\n")
-
-        # Create download script to run in subprocess
-        script_content = f'''
-import sys
-sys.path.insert(0, "{os.path.dirname(__file__)}/../..")
-
-from huggingface_hub import snapshot_download
-import os
-
-model_name = "{model_name}"
-cache_dir = "{cache_dir}"
-token = {repr(hf_token)}
-
-repo_map = {{
-    "tiny": "Systran/faster-whisper-tiny",
-    "tiny.en": "Systran/faster-whisper-tiny.en", 
-    "base": "Systran/faster-whisper-base",
-    "base.en": "Systran/faster-whisper-base.en",
-    "small": "Systran/faster-whisper-small",
-    "small.en": "Systran/faster-whisper-small.en",
-    "medium": "Systran/faster-whisper-medium",
-    "medium.en": "Systran/faster-whisper-medium.en",
-    "large-v1": "Systran/faster-whisper-large-v1",
-    "large-v2": "Systran/faster-whisper-large-v2", 
-    "large-v3": "Systran/faster-whisper-large-v3",
-    "large": "Systran/faster-whisper-large-v3",
-    "distil-small.en": "Systran/faster-distil-whisper-small.en",
-    "distil-medium.en": "Systran/faster-distil-whisper-medium.en",
-    "distil-large-v2": "Systran/faster-distil-whisper-large-v2",
-    "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
-    "distil-large-v3.5": "distil-whisper/distil-large-v3.5-ct2",
-    "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
-    "turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
-}}
-
-repo_id = repo_map.get(model_name, f"Systran/faster-whisper-{{model_name}}")
-
-print(f"[Download] Starting download of {{model_name}} from {{repo_id}}")
-print(f"[Download] Cache: {{cache_dir}}")
-print(f"[Download] Token: {{'Yes' if token else 'No (anonymous)'}}")
-print()
-
-try:
-    snapshot_download(
-        repo_id=repo_id,
-        cache_dir=cache_dir,
-        token=token,
-        local_files_only=False,
-        resume_download=True,
-    )
-    print(f"\\n[Download] ✓ {{model_name}} download complete!")
-    sys.exit(0)
-except Exception as e:
-    print(f"\\n[Download] ✗ Error: {{e}}")
-    sys.exit(1)
-'''
-
-        # Write temporary script
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(script_content)
-            script_path = f.name
-
-        try:
-            # Run in subprocess
-            # Using Popen to stream output in real-time
-            process = subprocess.Popen(
-                [sys.executable, script_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True,
-                bufsize=1,
-            )
-
-            # Stream output to terminal
-            for line in process.stdout:
-                print(line, end="")
-
-            # Wait for completion
-            return_code = process.wait()
-
-            if return_code == 0:
-                print(f"\n{'=' * 60}")
-                print(f"[Subtitle Editor] ✓ {model_name} ready!")
-                print(f"{'=' * 60}\n")
-                self.report({"INFO"}, f"Model {model_name} downloaded successfully!")
-            else:
-                print(f"\n{'=' * 60}")
-                print(f"[Subtitle Editor] ✗ Download failed")
-                print(f"{'=' * 60}\n")
-                self.report({"ERROR"}, f"Failed to download {model_name}")
-
-        finally:
-            # Clean up temp script
-            try:
-                os.unlink(script_path)
-            except:
-                pass
-
+        
+        if props.is_downloading_model:
+            props.is_downloading_model = False
+            props.model_download_status = "Cancelling..."
+            self.report({"INFO"}, "Cancelling download...")
+        else:
+            self.report({"WARNING"}, "No download in progress")
+        
         return {"FINISHED"}
 
 
-classes = [SUBTITLE_OT_download_model]
+classes = [
+    SUBTITLE_OT_download_model,
+    SUBTITLE_OT_cancel_download,
+]

@@ -63,11 +63,23 @@ class TranscriptionManager:
                 else:
                     self.device = "cpu"
 
+            # Determine model path
+            model_path_or_size = self.model_name
+            download_root = cache_dir
+
+            # Check if we have a local flat model directory (new structure)
+            if cache_dir:
+                local_model_path = os.path.join(cache_dir, self.model_name)
+                if os.path.exists(os.path.join(local_model_path, "model.bin")):
+                    # Found local model folder - load directly from path
+                    model_path_or_size = local_model_path
+                    download_root = None  # Don't use download_root when path provided
+
             self.model = WhisperModel(
-                self.model_name,
+                model_path_or_size,
                 device=self.device,
                 compute_type=self.compute_type,
-                download_root=cache_dir,
+                download_root=download_root,
             )
             return True
 

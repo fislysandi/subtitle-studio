@@ -1,28 +1,28 @@
 """
 Pure Python download manager - no Blender dependencies.
-Follows functional programming principles with immutable state.
+Implements real progress tracking using custom tqdm class.
 """
 
 import os
 import threading
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Callable
 from dataclasses import dataclass
 from enum import Enum
 
 try:
-    from huggingface_hub import snapshot_download
-    from huggingface_hub.errors import RepositoryNotFoundError
+    from huggingface_hub import snapshot_download, hf_hub_download
+    from huggingface_hub.utils import are_progress_bars_disabled
 
     HAS_HF = True
 except ImportError:
     HAS_HF = False
     snapshot_download = None
-    RepositoryNotFoundError = Exception
+    hf_hub_download = None
 
 
 class DownloadStatus(Enum):
-    """Immutable state representation for download status."""
+    """Download status states."""
 
     PENDING = "pending"
     CHECKING = "checking"
@@ -32,12 +32,9 @@ class DownloadStatus(Enum):
     CANCELLED = "cancelled"
 
 
-@dataclass(frozen=True)
+@dataclass
 class DownloadProgress:
-    """
-    Immutable progress state.
-    Frozen dataclass ensures immutability (functional approach).
-    """
+    """Immutable progress state."""
 
     status: DownloadStatus
     bytes_downloaded: int
@@ -47,177 +44,332 @@ class DownloadProgress:
 
     @property
     def percentage(self) -> float:
-        """Pure function - same input always same output."""
+        """Progress as 0.0 to 1.0."""
         if self.bytes_total == 0:
             return 0.0
-        return self.bytes_downloaded / self.bytes_total
+        return min(self.bytes_downloaded / self.bytes_total, 1.0)
+
+
+class ProgressTracker:
+    """
+    Custom tqdm-compatible class that captures progress from huggingface_hub.
+    
+    huggingface_hub uses tqdm internally. By providing our own tqdm_class,
+    we intercept all progress updates and forward them to our callback.
+    """
+
+    # Class variables for communication with DownloadManager
+    _progress_callback: Optional[Callable[[int, int, str], None]] = None
+    _cancel_event: Optional[threading.Event] = None
+    _lock = threading.RLock()  # Class-level lock for tqdm compatibility
+
+    def __init__(
+        self,
+        iterable=None,
+        desc: str = "",
+        total: Optional[int] = None,
+        unit: str = "B",
+        unit_scale: bool = True,
+        unit_divisor: int = 1024,
+        **kwargs,
+    ):
+        """Initialize the progress tracker."""
+        self.iterable = iterable
+        self.desc = desc or ""
+        self.total = total or 0
+        self.n = 0
+        self.unit = unit
+        
+        # Get the callback from class variable (set by DownloadManager)
+        self._callback = ProgressTracker._progress_callback
+        self._cancel_event_ref = ProgressTracker._cancel_event
+
+    @classmethod
+    def get_lock(cls):
+        """Return the class-level lock (required by huggingface_hub)."""
+        return cls._lock
+
+    @classmethod
+    def set_lock(cls, lock):
+        """Set the class-level lock (tqdm compatibility)."""
+        cls._lock = lock
+
+    @classmethod
+    def external_write_mode(cls, file=None, nolock=False):
+        """Context manager for external writes (tqdm compatibility)."""
+        import contextlib
+        return contextlib.nullcontext()
+
+    @classmethod
+    def write(cls, s, file=None, end="\n", nolock=False):
+        """Write to output (tqdm compatibility)."""
+        pass
+
+    def __iter__(self):
+        """Iterate with progress tracking."""
+        if self.iterable is None:
+            return self
+        for item in self.iterable:
+            yield item
+            self.update(1)
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, *args):
+        """Context manager exit."""
+        self.close()
+
+    def update(self, n: int = 1):
+        """Update progress by n units."""
+        self.n += n
+        if self._callback:
+            self._callback(self.n, self.total, self.desc)
+
+    def set_description(self, desc: str = "", refresh: bool = True):
+        """Set the description."""
+        self.desc = desc
+
+    def set_postfix(self, **kwargs):
+        """Set postfix (ignored)."""
+        pass
+
+    def close(self):
+        """Close the progress bar."""
+        pass
+
+    def refresh(self):
+        """Refresh display (no-op)."""
+        pass
+
+    @property
+    def format_dict(self):
+        """Return format dict for compatibility."""
+        return {"n": self.n, "total": self.total}
 
 
 class DownloadManager:
     """
-    Manages model downloads with functional approach.
-    No side effects - all state changes explicit.
+    Manages model downloads with real progress tracking.
+    Thread-safe with proper cancellation support.
     """
 
+    # Model name to repo ID mapping
+    REPO_MAP: Dict[str, str] = {
+        "tiny": "Systran/faster-whisper-tiny",
+        "tiny.en": "Systran/faster-whisper-tiny.en",
+        "base": "Systran/faster-whisper-base",
+        "base.en": "Systran/faster-whisper-base.en",
+        "small": "Systran/faster-whisper-small",
+        "small.en": "Systran/faster-whisper-small.en",
+        "medium": "Systran/faster-whisper-medium",
+        "medium.en": "Systran/faster-whisper-medium.en",
+        "large-v1": "Systran/faster-whisper-large-v1",
+        "large-v2": "Systran/faster-whisper-large-v2",
+        "large-v3": "Systran/faster-whisper-large-v3",
+        "large": "Systran/faster-whisper-large-v3",
+        "distil-small.en": "Systran/faster-distil-whisper-small.en",
+        "distil-medium.en": "Systran/faster-distil-whisper-medium.en",
+        "distil-large-v2": "Systran/faster-distil-whisper-large-v2",
+        "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
+        "distil-large-v3.5": "distil-whisper/distil-large-v3.5-ct2",
+        "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+    }
+
     def __init__(self, cache_dir: str):
+        """Initialize download manager."""
         self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
         self._cancel_event = threading.Event()
-        self._current_progress = DownloadProgress(
+        self._lock = threading.Lock()
+        self._progress = DownloadProgress(
             status=DownloadStatus.PENDING,
             bytes_downloaded=0,
             bytes_total=0,
             current_file="",
             message="Ready",
         )
-        self._lock = threading.Lock()
 
     def get_progress(self) -> DownloadProgress:
-        """Pure read - returns immutable state."""
+        """Get current progress (thread-safe read)."""
         with self._lock:
-            return self._current_progress
+            return self._progress
 
     def is_cancelled(self) -> bool:
-        """Pure function check."""
+        """Check if download was cancelled."""
         return self._cancel_event.is_set()
 
     def cancel(self) -> None:
-        """Signal cancellation - thread-safe."""
+        """Signal cancellation."""
         self._cancel_event.set()
-        self._update_progress(
-            status=DownloadStatus.CANCELLED, message="Download cancelled"
+        self._set_progress(
+            status=DownloadStatus.CANCELLED,
+            message="Download cancelled",
         )
 
-    def _update_progress(self, **kwargs) -> None:
-        """
-        Internal: Update progress state immutably.
-        Creates new DownloadProgress instead of modifying.
-        """
+    def _set_progress(self, **kwargs) -> None:
+        """Update progress state (thread-safe)."""
         with self._lock:
-            current = self._current_progress
-            new_state = DownloadProgress(
+            current = self._progress
+            self._progress = DownloadProgress(
                 status=kwargs.get("status", current.status),
-                bytes_downloaded=kwargs.get(
-                    "bytes_downloaded", current.bytes_downloaded
-                ),
+                bytes_downloaded=kwargs.get("bytes_downloaded", current.bytes_downloaded),
                 bytes_total=kwargs.get("bytes_total", current.bytes_total),
                 current_file=kwargs.get("current_file", current.current_file),
                 message=kwargs.get("message", current.message),
             )
-            self._current_progress = new_state
 
-    def _get_repo_id(self, model_name: str) -> str:
-        """Pure function - model name to repo ID mapping."""
-        repo_map: Dict[str, str] = {
-            "tiny": "Systran/faster-whisper-tiny",
-            "tiny.en": "Systran/faster-whisper-tiny.en",
-            "base": "Systran/faster-whisper-base",
-            "base.en": "Systran/faster-whisper-base.en",
-            "small": "Systran/faster-whisper-small",
-            "small.en": "Systran/faster-whisper-small.en",
-            "medium": "Systran/faster-whisper-medium",
-            "medium.en": "Systran/faster-whisper-medium.en",
-            "large-v1": "Systran/faster-whisper-large-v1",
-            "large-v2": "Systran/faster-whisper-large-v2",
-            "large-v3": "Systran/faster-whisper-large-v3",
-            "large": "Systran/faster-whisper-large-v3",
-            "distil-small.en": "Systran/faster-distil-whisper-small.en",
-            "distil-medium.en": "Systran/faster-distil-whisper-medium.en",
-            "distil-large-v2": "Systran/faster-distil-whisper-large-v2",
-            "distil-large-v3": "Systran/faster-distil-whisper-large-v3",
-            "distil-large-v3.5": "distil-whisper/distil-large-v3.5-ct2",
-            "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
-            "turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
-        }
-        return repo_map.get(model_name, f"Systran/faster-whisper-{model_name}")
+    def _get_model_dir(self, model_name: str) -> Path:
+        """Get the specific directory where this model should be stored."""
+        # Use simple folder names: "tiny", "base.en", etc.
+        # This creates a flat structure: .../models/tiny/model.bin
+        return self.cache_dir / model_name
 
-    def _is_cached(self, model_name: str) -> bool:
-        """Pure function - check if model exists in cache."""
-        repo_id = self._get_repo_id(model_name)
-        cache_path = self.cache_dir / f"models--{repo_id.replace('/', '--')}"
-        return cache_path.exists()
+    def is_cached(self, model_name: str) -> bool:
+        """Check if model is fully downloaded."""
+        model_dir = self._get_model_dir(model_name)
+        
+        # Check if directory exists
+        if not model_dir.exists():
+            return False
+            
+        # Check for essential model files
+        # faster-whisper needs at least model.bin and config.json
+        has_bin = (model_dir / "model.bin").exists()
+        has_config = (model_dir / "config.json").exists()
+        
+        return has_bin and has_config
 
-    def _get_error_result(self, message: str) -> DownloadProgress:
-        """Pure function - creates error progress state."""
-        return DownloadProgress(
-            status=DownloadStatus.ERROR,
-            bytes_downloaded=0,
-            bytes_total=0,
-            current_file="",
+    def _format_size(self, bytes_val: int) -> str:
+        """Format bytes as human-readable string."""
+        if bytes_val < 1024:
+            return f"{bytes_val} B"
+        elif bytes_val < 1024 * 1024:
+            return f"{bytes_val / 1024:.1f} KB"
+        elif bytes_val < 1024 * 1024 * 1024:
+            return f"{bytes_val / (1024 * 1024):.1f} MB"
+        else:
+            return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
+
+    def _progress_callback(self, downloaded: int, total: int, filename: str) -> None:
+        """Callback for progress updates from ProgressTracker."""
+        if self._cancel_event.is_set():
+            raise InterruptedError("Download cancelled")
+        
+        # Format nice progress message
+        if total > 0:
+            pct = (downloaded / total) * 100
+            dl_str = self._format_size(downloaded)
+            total_str = self._format_size(total)
+            message = f"{dl_str} / {total_str} ({pct:.1f}%)"
+        else:
+            message = f"Downloading {filename}..."
+            
+        self._set_progress(
+            status=DownloadStatus.DOWNLOADING,
+            bytes_downloaded=downloaded,
+            bytes_total=total,
+            current_file=filename,
             message=message,
         )
 
-    def _get_cached_result(self, model_name: str) -> DownloadProgress:
-        """Pure function - creates cached progress state."""
-        return DownloadProgress(
-            status=DownloadStatus.COMPLETE,
-            bytes_downloaded=0,
-            bytes_total=0,
-            current_file="",
-            message=f"Model {model_name} already cached",
-        )
-
-    def _get_success_result(self, model_name: str) -> DownloadProgress:
-        """Pure function - creates success progress state."""
-        return DownloadProgress(
-            status=DownloadStatus.COMPLETE,
-            bytes_downloaded=100,
-            bytes_total=100,
-            current_file="",
-            message=f"Model {model_name} downloaded successfully!",
-        )
-
-    def _perform_download(self, repo_id: str, token: Optional[str]) -> None:
-        """Execute the actual download using huggingface_hub."""
-        snapshot_download(
-            repo_id=repo_id,
-            cache_dir=self.cache_dir,
-            token=token,
-            local_files_only=False,
-            resume_download=True,
-            tqdm_class=None,
-        )
-
-    def _handle_download_error(self, error: Exception) -> DownloadProgress:
-        """Handle download errors and cancellation."""
-        if self._cancel_event.is_set():
-            return self._current_progress
-        return self._get_error_result(f"Error: {str(error)}")
-
-    def download(
-        self, model_name: str, token: Optional[str] = None
-    ) -> DownloadProgress:
+    def download(self, model_name: str, token: Optional[str] = None) -> DownloadProgress:
         """
-        Download a model. Blocks until complete or cancelled.
-        Returns final progress state.
+        Download a model with progress tracking.
+        
+        Args:
+            model_name: Name of the Whisper model
+            token: Optional Hugging Face token
+            
+        Returns:
+            Final progress state
         """
         if not HAS_HF:
-            return self._get_error_result("huggingface_hub not installed")
+            self._set_progress(
+                status=DownloadStatus.ERROR,
+                message="huggingface_hub not installed",
+            )
+            return self.get_progress()
 
-        if self._is_cached(model_name):
-            return self._get_cached_result(model_name)
+        # Check cache first
+        if self.is_cached(model_name):
+            self._set_progress(
+                status=DownloadStatus.COMPLETE,
+                bytes_downloaded=100,
+                bytes_total=100,
+                message=f"Model '{model_name}' already cached",
+            )
+            return self.get_progress()
 
-        self._update_progress(
+        # Reset state
+        self._cancel_event.clear()
+        self._set_progress(
             status=DownloadStatus.CHECKING,
-            message=f"Preparing to download {model_name}...",
+            bytes_downloaded=0,
+            bytes_total=0,
+            message=f"Preparing to download '{model_name}'...",
         )
 
         repo_id = self._get_repo_id(model_name)
 
         try:
-            self._perform_download(repo_id, token)
+            # Set up ProgressTracker class variables for callback
+            ProgressTracker._progress_callback = self._progress_callback
+            ProgressTracker._cancel_event = self._cancel_event
+
+            # Use local_dir to download directly to our flat folder structure
+            # local_dir_use_symlinks=False ensures real files are created
+            model_dir = self._get_model_dir(model_name)
+            
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=str(model_dir),
+                local_dir_use_symlinks=False,
+                token=token,
+                resume_download=None,  # Not needed with local_dir usually, but safe to omit
+                tqdm_class=ProgressTracker,
+            )
 
             if self._cancel_event.is_set():
-                return self._current_progress
+                return self.get_progress()
 
-            return self._get_success_result(model_name)
+            self._set_progress(
+                status=DownloadStatus.COMPLETE,
+                bytes_downloaded=100,
+                bytes_total=100,
+                message=f"Model '{model_name}' downloaded successfully!",
+            )
+
+        except InterruptedError:
+            # Cancelled by user
+            self._set_progress(
+                status=DownloadStatus.CANCELLED,
+                message="Download cancelled by user",
+            )
 
         except Exception as e:
-            return self._handle_download_error(e)
+            error_msg = str(e)
+            if "404" in error_msg or "not found" in error_msg.lower():
+                error_msg = f"Model '{model_name}' not found on Hugging Face"
+            elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                error_msg = "Authentication required. Add HF token in addon preferences."
+            
+            self._set_progress(
+                status=DownloadStatus.ERROR,
+                message=f"Error: {error_msg[:100]}",
+            )
+
+        finally:
+            # Clean up class variables
+            ProgressTracker._progress_callback = None
+            ProgressTracker._cancel_event = None
+
+        return self.get_progress()
 
 
 def create_download_manager(cache_dir: str) -> DownloadManager:
-    """
-    Factory function - creates DownloadManager with dependency injection.
-    Pure function - same input always same output.
-    """
+    """Factory function to create DownloadManager."""
     return DownloadManager(cache_dir)

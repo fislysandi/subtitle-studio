@@ -1,6 +1,6 @@
 # Subtitle Editor - Project State
 
-**Last Updated:** 2025-02-07 (Commit: 1c8793d - Dependency Download Operators)  
+**Last Updated:** 2025-02-08 (Restored Non-Blocking Model Download with Progress)  
 **Addon Location:** `addons/subtitle_editor/`
 
 ## 📍 Current Status
@@ -96,9 +96,10 @@ subtitle_editor/
 ├── operators/               # Blender operators (auto-registered)
 │   ├── __init__.py
 │   ├── ops_dependencies.py  # Dependency management operators
-│   ├── ops_dependency_download.py  # NEW: Non-blocking dependency download
+│   ├── ops_dependency_download.py  # Non-blocking dependency download (modal)
 │   ├── ops_import_export.py # Import/export operators
-│   ├── ops_model_download.py       # Model download (subprocess)
+│   ├── ops_model_download.py       # Model download (modal operator + progress)
+│   ├── ops_model_cancel.py         # Cancel model download
 │   ├── ops_strip_edit.py    # List edit operators
 │   └── ops_transcribe.py    # Transcription & translation operators
 │
@@ -138,6 +139,12 @@ subtitle_editor/
 - `subtitle.refresh_list` - Refresh subtitle list
 - `subtitle.select_strip` - Select strip from list
 - `subtitle.update_text` - Update subtitle text
+- `subtitle.check_dependencies` - Check if dependencies are installed
+- `subtitle.install_dependencies` - Install missing dependencies (modal)
+- `subtitle.check_gpu` - Check GPU availability for PyTorch
+- `subtitle.install_pytorch` - Install PyTorch with selected CUDA/ROCm version (modal)
+- `subtitle.download_model` - Download Whisper model with progress UI (modal)
+- `subtitle.cancel_download` - Cancel model download
 - `subtitle.check_dependencies` - Check if dependencies are installed
 - `subtitle.install_dependencies` - Install missing dependencies
 - `subtitle.check_gpu` - Check GPU availability for PyTorch
@@ -207,6 +214,7 @@ subtitle_editor/
 - [x] Fix Blender 5.0 API compatibility (sequences_all → sequences)
 - [x] Implement word count splitting in transcription
 - [x] Test PyTorch installation on different GPU types
+- [x] **Restored non-blocking model download with progress UI** (modal operator pattern)
 
 ## 🔄 To Resume Work
 
@@ -221,7 +229,31 @@ cat PROJECT_STATE.md
 
 ## 📝 Recent Changes
 
-### 1. Dependency Download Operators (Latest)
+### 1. Restored Non-Blocking Model Download with Progress UI (Latest)
+**Git History Preserved:** This is a new implementation based on commit 8942594, not a revert
+
+**Changes:**
+- **Rewrote** `operators/ops_model_download.py` with proper Modal Operator pattern
+- **Enhanced** UI in `panels/main_panel.py` with progress bar and cancel button
+- **Utilizes** existing `core/download_manager.py` (already in codebase)
+- **Integrates** `operators/ops_model_cancel.py` for cancellation support
+
+**Features Restored:**
+- ✅ Non-blocking UI - Use Blender while downloading
+- ✅ Real-time progress bar (0-100%)
+- ✅ Status messages ("Starting...", "Downloading...", "Complete!")
+- ✅ Cancel button to stop download
+- ✅ Blender's built-in progress indicator
+- ✅ Thread-safe with proper cleanup
+- ✅ Preserves all existing improvements (HF token support, model size display)
+
+**Architecture:**
+- Modal operator polls DownloadManager every 0.1 seconds
+- Background thread handles actual download
+- Thread-safe state sharing with locks
+- Proper timer cleanup to prevent memory leaks
+
+### 2. Dependency Download Operators
 - Added `SUBTITLE_OT_download_dependencies` - Non-blocking modal operator for pip installs
 - Added `SUBTITLE_OT_cancel_download_deps` - Cancel operator for dependency downloads
 - Uses proper modal operator pattern with background threading
@@ -312,13 +344,13 @@ cat PROJECT_STATE.md
 
 ## 📊 Quick Stats
 
-- **Total Files:** 31
-- **Operators:** 11
+- **Total Files:** 32
+- **Operators:** 13
 - **Panels:** 2
 - **Property Groups:** 2
 - **Dependencies:** 3 (faster-whisper, pysubs2, onnxruntime)
 - **Whisper Models:** 19 (multilingual, English-only, distilled, turbo)
-- **Lines of Code:** ~2600+
+- **Lines of Code:** ~2700+
 
 ## 🔗 Important Links
 
@@ -356,10 +388,12 @@ cat PROJECT_STATE.md
 The addon uses different approaches for different download types:
 
 ### Model Download (`subtitle.download_model`)
-- **Approach**: Subprocess (separate Python process)
-- **Why**: Avoids GIL, simple, reliable resume support
-- **Progress**: Terminal output only
-- **Cancel**: Not supported (close Blender to cancel)
+- **Approach**: Modal operator + background thread
+- **Why**: Non-blocking UI with real progress tracking
+- **Progress**: Progress bar + status messages + Blender progress indicator
+- **Cancel**: Supported via `subtitle.cancel_download` operator
+- **Resume**: Supported via huggingface_hub's resume_download
+- **Core**: Uses `DownloadManager` from `core/download_manager.py`
 
 ### Dependency Download (`subtitle.download_dependencies`)
 - **Approach**: Modal operator + background thread
