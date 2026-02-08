@@ -2,6 +2,8 @@
 Strip Edit Operators
 """
 
+import math
+
 import bpy
 from bpy.types import Operator
 
@@ -67,6 +69,25 @@ class SUBTITLE_OT_refresh_list(Operator):
         return {"FINISHED"}
 
 
+def _select_strip_by_index(context, index: int) -> bool:
+    scene = context.scene
+
+    if index < 0 or index >= len(scene.text_strip_items):
+        return False
+
+    item = scene.text_strip_items[index]
+
+    if scene.sequence_editor:
+        for strip in scene.sequence_editor.strips:
+            strip.select = strip.name == item.name
+            if strip.name == item.name:
+                scene.frame_current = strip.frame_final_start
+
+    scene.subtitle_editor.current_text = item.text
+    scene.text_strip_items_index = index
+    return True
+
+
 class SUBTITLE_OT_select_strip(Operator):
     """Select a text strip"""
 
@@ -78,24 +99,55 @@ class SUBTITLE_OT_select_strip(Operator):
     index: bpy.props.IntProperty()
 
     def execute(self, context):
-        scene = context.scene
+        if not _select_strip_by_index(context, self.index):
+            return {"CANCELLED"}
+        return {"FINISHED"}
 
-        if self.index < 0 or self.index >= len(scene.text_strip_items):
+
+class SUBTITLE_OT_select_next_strip(Operator):
+    """Select the next subtitle strip"""
+
+    bl_idname = "subtitle.select_next_strip"
+    bl_label = "Next Subtitle"
+    bl_description = "Select the next subtitle strip in the list"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        scene = context.scene
+        total = len(scene.text_strip_items)
+        if total == 0:
             return {"CANCELLED"}
 
-        item = scene.text_strip_items[self.index]
+        current = scene.text_strip_items_index
+        next_index = min(total - 1, current + 1 if current >= 0 else 0)
 
-        # Find and select the strip
-        if scene.sequence_editor:
-            for strip in scene.sequence_editor.strips:
-                strip.select = strip.name == item.name
-                if strip.name == item.name:
-                    # Jump to strip
-                    scene.frame_current = strip.frame_final_start
+        if not _select_strip_by_index(context, next_index):
+            return {"CANCELLED"}
+        return {"FINISHED"}
 
-        # Update current text
-        scene.subtitle_editor.current_text = item.text
 
+class SUBTITLE_OT_select_previous_strip(Operator):
+    """Select the previous subtitle strip"""
+
+    bl_idname = "subtitle.select_previous_strip"
+    bl_label = "Previous Subtitle"
+    bl_description = "Select the previous subtitle strip in the list"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        scene = context.scene
+        total = len(scene.text_strip_items)
+        if total == 0:
+            return {"CANCELLED"}
+
+        current = scene.text_strip_items_index
+        if current == -1:
+            prev_index = max(0, total - 1)
+        else:
+            prev_index = max(0, current - 1)
+
+        if not _select_strip_by_index(context, prev_index):
+            return {"CANCELLED"}
         return {"FINISHED"}
 
 
@@ -248,36 +300,6 @@ class SUBTITLE_OT_remove_selected_strip(Operator):
         return {"FINISHED"}
 
 
-class SUBTITLE_OT_update_text(Operator):
-    """Update subtitle text"""
-
-    bl_idname = "subtitle.update_text"
-    bl_label = "Update Text"
-    bl_description = "Update the selected subtitle text"
-    bl_options = {"REGISTER", "UNDO"}
-
-    def execute(self, context):
-        scene = context.scene
-        index = scene.text_strip_items_index
-
-        if index < 0 or index >= len(scene.text_strip_items):
-            self.report({"WARNING"}, "No subtitle selected")
-            return {"CANCELLED"}
-
-        item = scene.text_strip_items[index]
-        new_text = scene.subtitle_editor.current_text
-
-        # Update UI list
-        item.text = new_text
-
-        # Update actual strip
-        if scene.sequence_editor:
-            for strip in scene.sequence_editor.strips:
-                if strip.name == item.name and strip.type == "TEXT":
-                    strip.text = new_text
-                    break
-
-
 class SUBTITLE_OT_apply_style(Operator):
     """Apply current style settings to selected subtitle strips"""
 
@@ -421,6 +443,78 @@ class SUBTITLE_OT_copy_style_from_active(Operator):
         return {"FINISHED"}
 
 
+class SUBTITLE_OT_adjust_trim(Operator):
+    """Trim start/end with optional precision"""
+
+    bl_idname = "subtitle.adjust_trim"
+    bl_label = "Adjust Trim"
+    bl_description = "Trim the selected subtitle; hold Shift to slow movement"
+    bl_options = {"REGISTER", "UNDO"}
+
+    handle: bpy.props.EnumProperty(
+        items=[
+            ("START", "Start", "Trim the start handle"),
+            ("END", "End", "Trim the end handle"),
+        ]
+    )
+
+    pixels_per_frame: bpy.props.IntProperty(default=6, min=1)
+    step: bpy.props.IntProperty(default=2, min=1)
+
+    def invoke(self, context, event):
+        scene = context.scene
+        if not scene.text_strip_items:
+            self.report({"WARNING"}, "No subtitles to trim")
+            return {"CANCELLED"}
+
+        self.index = scene.text_strip_items_index
+        if self.index < 0:
+            self.index = 0
+
+        self.start_mouse = event.mouse_x
+        item = scene.text_strip_items[self.index]
+        self.base_value = item.frame_start if self.handle == "START" else item.frame_end
+        context.window_manager.modal_handler_add(self)
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type in {"RIGHTMOUSE", "ESC"}:
+            return {"CANCELLED"}
+
+        if event.type == "MOUSEMOVE":
+            delta_pixels = event.mouse_x - self.start_mouse
+            units = delta_pixels / float(max(1, self.pixels_per_frame))
+            frames_float = units * self.step
+            if event.shift:
+                frames_float *= 0.2
+
+            scene = context.scene
+            item = scene.text_strip_items[self.index]
+
+            target = int(round(self.base_value + frames_float))
+
+            if self.handle == "START":
+                target = max(scene.frame_start, min(target, item.frame_end - 1))
+                item.frame_start = target
+            else:
+                target = max(item.frame_start + 1, target)
+                item.frame_end = target
+
+        if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+            return {"FINISHED"}
+
+        return {"RUNNING_MODAL"}
+
+    def _apply_delta(self, context, delta):
+        scene = context.scene
+        item = scene.text_strip_items[self.index]
+
+        if self.handle == "START":
+            item.frame_start = max(scene.frame_start, item.frame_start + delta)
+        else:
+            item.frame_end = max(item.frame_start + 1, item.frame_end + delta)
+
+
 class SUBTITLE_OT_insert_line_breaks(Operator):
     """Insert line breaks into selected subtitles"""
 
@@ -471,9 +565,11 @@ class SUBTITLE_OT_insert_line_breaks(Operator):
 classes = [
     SUBTITLE_OT_refresh_list,
     SUBTITLE_OT_select_strip,
+    SUBTITLE_OT_select_next_strip,
+    SUBTITLE_OT_select_previous_strip,
     SUBTITLE_OT_add_strip_at_cursor,
     SUBTITLE_OT_remove_selected_strip,
-    SUBTITLE_OT_update_text,
+    SUBTITLE_OT_adjust_trim,
     SUBTITLE_OT_apply_style,
     SUBTITLE_OT_copy_style_from_active,
     SUBTITLE_OT_insert_line_breaks,

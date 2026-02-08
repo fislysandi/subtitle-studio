@@ -7,6 +7,16 @@ import bpy
 from bpy.types import Panel
 
 
+def _draw_trim_control(layout, item, handle: str):
+    label = "Start" if handle == "START" else "End"
+    prop_name = "frame_start" if handle == "START" else "frame_end"
+
+    row = layout.row(align=True)
+    row.prop(item, prop_name, text=label, slider=True)
+    op = row.operator("subtitle.adjust_trim", text="", icon="DRIVER_DISTANCE")
+    op.handle = handle
+
+
 class SEQUENCER_PT_panel(Panel):
     """Main Subtitle Studio Panel"""
 
@@ -48,22 +58,11 @@ class SEQUENCER_PT_panel(Panel):
         row.operator("subtitle.add_strip_at_cursor", text="", icon="ADD")
         row.operator("subtitle.remove_selected_strip", text="", icon="REMOVE")
         row.separator()
-        select_op = row.operator("subtitle.select_strip", text="", icon="TRIA_UP")
-        select_op.index = scene.text_strip_items_index
-        row.separator()
+        row.operator("subtitle.select_next_strip", text="", icon="TRIA_UP")
+        row.operator("subtitle.select_previous_strip", text="", icon="TRIA_DOWN")
 
         # Update
-        row.operator("subtitle.update_text", text="", icon="CHECKMARK")
-
-        # Edit section (moved from separate panel)
         layout.separator()
-        style_box = layout.box()
-        style_box.label(text="Batch Styling")
-        style_box.operator(
-            "subtitle.copy_style_from_active",
-            text="Copy Active Style to Selected",
-            icon="BRUSH_DATA",
-        )
 
         # Edit selected
         if scene.text_strip_items_index >= 0 and scene.text_strip_items:
@@ -77,9 +76,8 @@ class SEQUENCER_PT_panel(Panel):
 
             # Timing and position box
             box = col.box()
-            row = box.row(align=True)
-            row.prop(item, "frame_start", text="Start")
-            row.prop(item, "frame_end", text="End")
+            _draw_trim_control(box, item, "START")
+            _draw_trim_control(box, item, "END")
             box.prop(item, "channel")
 
             # Style box
@@ -98,6 +96,14 @@ class SEQUENCER_PT_panel(Panel):
         else:
             box = layout.box()
             box.label(text="Select a subtitle from the list to edit")
+
+        style_box = layout.box()
+        style_box.label(text="Batch Styling")
+        style_box.operator(
+            "subtitle.copy_style_from_active",
+            text="Copy Active Style to Selected",
+            icon="BRUSH_DATA",
+        )
 
 
 class SEQUENCER_PT_whisper_panel(Panel):

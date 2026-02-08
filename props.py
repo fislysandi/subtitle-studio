@@ -26,11 +26,17 @@ class TextStripItem(PropertyGroup):
     text: StringProperty(name="Text", description="Subtitle text content", default="")
 
     frame_start: IntProperty(
-        name="Start Frame", description="Frame where subtitle starts", default=1
+        name="Start Frame",
+        description="Frame where subtitle starts",
+        default=1,
+        update=lambda self, context: self._update_frames(context, source="start"),
     )
 
     frame_end: IntProperty(
-        name="End Frame", description="Frame where subtitle ends", default=25
+        name="End Frame",
+        description="Frame where subtitle ends",
+        default=25,
+        update=lambda self, context: self._update_frames(context, source="end"),
     )
 
     channel: IntProperty(
@@ -52,6 +58,52 @@ class TextStripItem(PropertyGroup):
         description="Internal reference to the strip",
         default="",
     )
+
+    def _resolve_scene(self, context):
+        scene = getattr(context, "scene", None) if context else None
+        if scene:
+            return scene
+
+        owner = getattr(self, "id_data", None)
+        if isinstance(owner, bpy.types.Scene):
+            return owner
+        return None
+
+    def _update_frames(self, context, source: str):
+        scene = self._resolve_scene(context)
+        if not scene or not scene.sequence_editor:
+            return
+
+        target_strip = None
+        for strip in scene.sequence_editor.strips:
+            if strip.name == self.name and strip.type == "TEXT":
+                target_strip = strip
+                break
+
+        if not target_strip:
+            return
+
+        start = target_strip.frame_final_start
+        end = target_strip.frame_final_end
+
+        if source == "start":
+            new_start = int(self.frame_start)
+            new_start = min(new_start, end - 1)
+            if new_start != start:
+                target_strip.frame_final_start = new_start
+                # ensure tail stays anchored after Blender recalculates duration
+                target_strip.frame_final_end = end
+        elif source == "end":
+            new_end = int(self.frame_end)
+            new_end = max(new_end, start + 1)
+            if new_end != end:
+                target_strip.frame_final_end = new_end
+                target_strip.frame_final_start = start
+        else:
+            return
+
+        self["frame_start"] = target_strip.frame_final_start
+        self["frame_end"] = target_strip.frame_final_end
 
 
 class SubtitleEditorProperties(PropertyGroup):
