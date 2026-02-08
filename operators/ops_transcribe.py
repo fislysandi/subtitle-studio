@@ -40,7 +40,13 @@ class SUBTITLE_OT_transcribe(Operator):
             "vad_filter": props.vad_filter,
             "subtitle_channel": props.subtitle_channel,
             "render_fps": scene.render.fps,
+            # Extract filepath on main thread for safety
+            "filepath": sequence_utils.get_strip_filepath(strip),
         }
+
+        if not config["filepath"]:
+            self.report({"ERROR"}, "Could not get file path from selected strip")
+            return {"CANCELLED"}
 
         # Start transcription in background thread
         props.is_transcribing = True
@@ -57,6 +63,7 @@ class SUBTITLE_OT_transcribe(Operator):
 
     def _transcribe_thread(self, context, strip, config):
         """Run transcription in background thread"""
+        print(f"[Subtitle Editor] Starting transcription thread for {config['filepath']}")
         # Thread-safe storage for progress data
         progress_data = {"progress": 0.0, "text": "Starting..."}
 
@@ -76,27 +83,13 @@ class SUBTITLE_OT_transcribe(Operator):
             bpy.app.timers.register(apply_updates, first_interval=0.0)
 
         try:
-            # Extract audio from strip
-            # Note: accessing strip.name etc might be unsafe if strip is deleted,
-            # but sequence_utils.get_strip_filepath likely uses it.
-            # Ideally we'd extract filepath on main thread too, but let's see.
-            # sequence_utils.get_strip_filepath might access bpy data.
-            # Best practice: get filepath in execute()
+            # Get filepath from config (extracted on main thread)
+            filepath = config["filepath"]
             
-            # Since we can't easily change the signature of get_strip_filepath or move it entirely 
-            # without checking its internals, and typically reading properties like filepath 
-            # *might* be okay-ish but writing is definitely bad. 
-            # However, for total safety, we should really pass the filepath.
-            # But strip object is passed... let's check if we can improve this.
-            # For now, following the plan to decouple config.
-            
-            filepath = sequence_utils.get_strip_filepath(strip)
+            # NOTE: We do NOT check filepath here again, assuming it was checked in execute
             if not filepath:
-                update_props_on_main_thread(0.0, "Error: Cannot get strip file path")
-                bpy.app.timers.register(
-                    lambda: setattr(context.scene.subtitle_editor, "is_transcribing", False) or None,
-                    first_interval=0.0,
-                )
+                 # Should not happen if execute checks it
+                update_props_on_main_thread(0.0, "Error: Invalid file path")
                 return
 
             # Initialize transcriber
@@ -246,7 +239,13 @@ class SUBTITLE_OT_translate(Operator):
             "vad_filter": props.vad_filter,
             "subtitle_channel": props.subtitle_channel,
             "render_fps": scene.render.fps,
+            # Extract filepath on main thread for safety
+            "filepath": sequence_utils.get_strip_filepath(strip),
         }
+
+        if not config["filepath"]:
+            self.report({"ERROR"}, "Could not get file path from selected strip")
+            return {"CANCELLED"}
 
         # Start translation in background thread
         props.is_transcribing = True
@@ -263,6 +262,7 @@ class SUBTITLE_OT_translate(Operator):
 
     def _translate_thread(self, context, strip, config):
         """Run translation in background thread"""
+        print(f"[Subtitle Editor] Starting translation thread for {config['filepath']}")
         # Thread-safe storage for progress data
         progress_data = {"progress": 0.0, "text": "Starting..."}
 
@@ -281,14 +281,13 @@ class SUBTITLE_OT_translate(Operator):
             bpy.app.timers.register(apply_updates, first_interval=0.0)
 
         try:
-            # Extract audio from strip
-            filepath = sequence_utils.get_strip_filepath(strip)
+            # Get filepath from config (extracted on main thread)
+            filepath = config["filepath"]
+            
+            # NOTE: We do NOT check filepath here again, assuming it was checked in execute
             if not filepath:
-                update_props_on_main_thread(0.0, "Error: Cannot get strip file path")
-                bpy.app.timers.register(
-                    lambda: setattr(context.scene.subtitle_editor, "is_transcribing", False) or None,
-                    first_interval=0.0,
-                )
+                 # Should not happen if execute checks it
+                update_props_on_main_thread(0.0, "Error: Invalid file path")
                 return
 
             # Initialize transcriber
@@ -343,6 +342,9 @@ class SUBTITLE_OT_translate(Operator):
             )
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"[Subtitle Editor] Error in translation thread: {e}")
             update_props_on_main_thread(0.0, f"Error: {str(e)}")
         finally:
             # Schedule cleanup on main thread

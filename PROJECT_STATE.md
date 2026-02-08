@@ -205,6 +205,7 @@ subtitle_editor/
 - [x] **Model Persistence UI**: Fixed issue where users thought they had to redownload models. Added "Model Ready" indicator to UI.
 - [x] **Blender 5.0 Compatibility**: Replaced deprecated `sequence_editor.sequences` with `sequence_editor.strips`.
 - [x] **Transcribe Channel Fix**: `Transcribe` operator now correctly uses the channel specified in the UI (`subtitle_channel`).
+- [x] **Thread Safety**: Fixed critical issue where accessing `strip` properties from background threads caused silent failures. Filepaths are now extracted on main thread.
 - [ ] Test all import/export formats
 - [ ] Add file browser panels for import/export
 - [ ] Optimize transcription performance
