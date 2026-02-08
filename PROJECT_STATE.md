@@ -232,8 +232,9 @@ cat PROJECT_STATE.md
 ## 📝 Recent Changes
 
 ### 1. Critical Stability Fixes (Latest)
-- **Thread Safety**: Refactored `ops_transcribe.py` to decouple background threads from Blender properties. Config is now passed as a dictionary, and all UI updates use `bpy.app.timers`.
-- **Error Handling**: Replaced bare `except:` clauses with `except Exception:` in `props.py` and `ops_dependencies.py` to prevent catching system signals.
+- **Model Download**: Fixed `AttributeError: '_get_repo_id'` in `DownloadManager`.
+- **Thread Safety**: Refactored `ops_transcribe.py` to decouple background threads from Blender properties.
+- **Error Handling**: Replaced bare `except:` clauses with `except Exception:` in `props.py` and `ops_dependencies.py`.
 
 ### 2. Restored Non-Blocking Model Download with Progress UI
 **Git History Preserved:** This is a new implementation based on commit 8942594, not a revert

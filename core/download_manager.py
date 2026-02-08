@@ -228,6 +228,12 @@ class DownloadManager:
         # This creates a flat structure: .../models/tiny/model.bin
         return self.cache_dir / model_name
 
+    def _get_repo_id(self, model_name: str) -> str:
+        """Get the Hugging Face repo ID for a model."""
+        if model_name not in self.REPO_MAP:
+            raise ValueError(f"Unknown model: {model_name}")
+        return self.REPO_MAP[model_name]
+
     def is_cached(self, model_name: str) -> bool:
         """Check if model is fully downloaded."""
         model_dir = self._get_model_dir(model_name)
