@@ -753,10 +753,10 @@ class DependencyManager:
         use_uv: bool = True
     ) -> list:
         """Generate install command."""
-        
+
         uv_path = DependencyManager.ensure_uv() if use_uv else None
         cmd = []
-        
+
         if uv_path:
             # UV command: uv pip install --python <blender_python> <packages>
             cmd = [uv_path, "pip", "install", "--python", sys.executable]

@@ -9,9 +9,10 @@ import bpy
 import threading
 import queue
 import subprocess
-import sys
 from typing import Optional, Dict, Any
 from bpy.types import Operator
+from ..core.dependency_manager import DependencyManager
+from ..config import __addon_name__
 
 
 class DependencyDownloadState:
@@ -100,6 +101,7 @@ class SUBTITLE_OT_download_dependencies(Operator):
     _thread = None
     _state = None
     _packages = None
+    _use_uv = True
 
     def modal(self, context, event) -> set:
         """
@@ -167,6 +169,9 @@ class SUBTITLE_OT_download_dependencies(Operator):
             "onnxruntime>=1.24.1",
         ]
 
+        addon_prefs = context.preferences.addons[__addon_name__].preferences
+        self._use_uv = addon_prefs.use_uv
+
         # Initialize shared state (thread-safe)
         self._state = DependencyDownloadState()
 
@@ -223,7 +228,6 @@ class SUBTITLE_OT_download_dependencies(Operator):
         Only uses the shared state object to report progress.
         """
         try:
-            python_exe = sys.executable
             total_packages = len(packages)
 
             for i, package in enumerate(packages):
@@ -235,8 +239,14 @@ class SUBTITLE_OT_download_dependencies(Operator):
                 progress = i / total_packages
                 state.update(progress=progress, status=f"Installing {package}...")
 
-                # Run pip install for this package
-                cmd = [python_exe, "-m", "pip", "install", "-q", package]
+                # Run uv install for this package
+                try:
+                    cmd = DependencyManager.get_install_command(
+                        [package], constraint="numpy<2.0", use_uv=self._use_uv
+                    )
+                except Exception as e:
+                    state.mark_complete(success=False, error=str(e))
+                    return
 
                 result = subprocess.run(
                     cmd, capture_output=True, text=True, check=False

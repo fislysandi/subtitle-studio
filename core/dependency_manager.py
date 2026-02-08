@@ -87,7 +87,6 @@ class DependencyManager:
         Get command to install packages using uv (preferred) or pip (fallback).
         Returns list of strings [executable, args...]
         """
-        # Only try to ensure uv if use_uv is True
         uv_path = DependencyManager.ensure_uv() if use_uv else None
         cmd = []
 

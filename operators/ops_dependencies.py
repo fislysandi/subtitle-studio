@@ -250,14 +250,12 @@ class SUBTITLE_OT_install_dependencies(Operator):
                 "onnxruntime>=1.24.1",
             ]
 
-            # Retrieve use_uv from Addon Preferences
-            addon_prefs = context.preferences.addons[__addon_name__].preferences
-
             # Install all packages in a single command using UV dependency manager
             props.deps_install_status = "Bootstrapping UV & resolving dependencies..."
 
             # This handles uv bootstrap automatically if needed
             # We pass numpy<2.0 as constraint
+            addon_prefs = context.preferences.addons[__addon_name__].preferences
             cmd = DependencyManager.get_install_command(
                 packages, constraint="numpy<2.0", use_uv=addon_prefs.use_uv
             )
@@ -396,11 +394,9 @@ class SUBTITLE_OT_install_pytorch(Operator):
             if index_url:
                 extra_args.extend(["--index-url", index_url])
 
-            # Retrieve use_uv from Addon Preferences
-            addon_prefs = context.preferences.addons[__addon_name__].preferences
-
             # IMPORTANT: numpy<2.0 is required for compatibility with aud module
             # Use DependencyManager to get uv/pip command
+            addon_prefs = context.preferences.addons[__addon_name__].preferences
             cmd = DependencyManager.get_install_command(
                 packages,
                 constraint="numpy<2.0",
