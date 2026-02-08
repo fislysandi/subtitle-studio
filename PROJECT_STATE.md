@@ -517,6 +517,19 @@ Comprehensive agent guide:
 - `guides/dependency-management.md` – UV-first install workflow
 - `concepts/overview.md`, `lookup/context-index.md`, etc. all live under the same directory (use `rg --files` to list them).
 
+### MCP server config
+- Keep your MCP server list under `~/.config/opencode/mcp-servers.json` (or `~/.config/opencode/config.json` `mcp_servers` entry). Each entry looks like:
+
+```json
+{
+  "name": "local",
+  "type": "stdio",
+  "config": {"command": ["opencode", "serve", "--mcp"]}
+}
+```
+
+- Add one entry per MCP server (stdio/SSE/StreamableHTTP). Agents should read this file after loading `PROJECT_STATE.md`, then initialize `MCPClient` with every server listed so they can reuse all installed MCP endpoints.
+
 ### Read roadmap next
 - Always open `ROADMAP.md` after loading context, so you understand priority milestones and immediate next tasks.
 - Suggested next work items are the unchecked boxes under “Immediate Next Tasks (Pick 3)” at the bottom of this file. Mention one of them (frame math, download operator, or rename README) when proposing new work.
