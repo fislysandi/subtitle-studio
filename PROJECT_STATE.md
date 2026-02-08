@@ -199,7 +199,9 @@ subtitle_editor/
 - [x] **Bare Except Clauses** - Replace with `except Exception:` (props.py:285, ops_dependencies.py:105)
 
 ### Medium Priority
-- [ ] Implement batch styling (copy style to selected)
+- [x] **Implement batch styling** (copy style to selected)
+  - Added `Apply Style to Selected` button in edit panel
+  - Applies font size, color, shadow, and alignment to all selected text strips
 - [ ] Add line break insertion
 - [ ] Test all import/export formats
 - [ ] Add file browser panels for import/export

@@ -77,6 +77,9 @@ class SEQUENCER_PT_panel(Panel):
             row = box.row(align=True)
             row.prop(scene.subtitle_editor, "text_color")
             row.prop(scene.subtitle_editor, "shadow_color")
+            
+            # Apply Style Button
+            box.operator("subtitle.apply_style", text="Apply Style to Selected", icon="BRUSH_DATA")
         else:
             box = layout.box()
             box.label(text="Select a subtitle from the list to edit")
