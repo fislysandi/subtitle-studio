@@ -4,38 +4,115 @@ Transcription Operators
 
 import bpy
 import threading
+import queue
 import os
+from types import SimpleNamespace
+from typing import Dict, Any, Optional, List
 from bpy.types import Operator
-from bpy.props import StringProperty, BoolProperty, EnumProperty
 
 from ..core import transcriber
 from ..utils import sequence_utils, file_utils
 
 
-class SUBTITLE_OT_transcribe(Operator):
-    """Transcribe selected audio/video strip to subtitles"""
+class _BaseTranscribeOperator(Operator):
+    """Shared modal operator logic for transcription/translation."""
 
-    bl_idname = "subtitle.transcribe"
-    bl_label = "Transcribe"
-    bl_description = "Transcribe selected strip to subtitles using AI"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_idname = "subtitle._base_transcribe"
+    bl_label = "Base Transcribe (Internal)"
+    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
+
+    _timer: Optional[bpy.types.Timer] = None
+    _thread: Optional[threading.Thread] = None
+    _queue: Optional[queue.Queue] = None
+    _config: Optional[Dict[str, Any]] = None
+    _scene_name: str = ""
+    _finished: bool = False
+    _success: bool = False
+    _segments: Optional[List[transcriber.TranscriptionSegment]] = None
+    _error_message: str = ""
+
+    _translate_override: Optional[bool] = None
+    _start_message: str = "Starting transcription..."
 
     def execute(self, context):
+        return self.invoke(context, None)
+
+    def invoke(self, context, event):
         scene = context.scene
         props = scene.subtitle_editor
 
-        # Get selected strip
+        if props.is_transcribing:
+            self.report({"WARNING"}, "Transcription already in progress")
+            return {"CANCELLED"}
+
         strip = sequence_utils.get_selected_strip(context)
         if not strip:
             self.report({"ERROR"}, "Please select an audio or video strip")
             return {"CANCELLED"}
 
-        # Extract settings to dictionary (read on main thread)
-        config = {
+        filepath = sequence_utils.get_strip_filepath(strip)
+        if not filepath:
+            self.report({"ERROR"}, "Could not get file path from selected strip")
+            return {"CANCELLED"}
+
+        error = self._validate_filepath(filepath)
+        if error:
+            self.report({"ERROR"}, error)
+            return {"CANCELLED"}
+
+        config = self._build_config(scene, props, filepath)
+        self._config = config
+        self._scene_name = scene.name
+        self._queue = queue.Queue()
+        self._finished = False
+        self._success = False
+        self._segments = None
+        self._error_message = ""
+
+        props.is_transcribing = True
+        props.progress = 0.0
+        props.progress_text = self._start_message
+
+        self._thread = threading.Thread(
+            target=self._transcribe_worker,
+            args=(config, self._queue),
+            daemon=True,
+        )
+        self._thread.start()
+
+        wm = context.window_manager
+        self._timer = wm.event_timer_add(0.1, window=context.window)
+        wm.modal_handler_add(self)
+
+        return {"RUNNING_MODAL"}
+
+    def modal(self, context, event):
+        if event.type == "ESC":
+            self._cancel(context, "Cancelled")
+            return {"CANCELLED"}
+
+        if event.type == "TIMER":
+            self._drain_queue(context)
+
+            if self._finished:
+                self._finalize(context)
+                return {"FINISHED"}
+
+            for area in context.screen.areas:
+                area.tag_redraw()
+
+        return {"PASS_THROUGH"}
+
+    def _build_config(self, scene, props, filepath: str) -> Dict[str, Any]:
+        translate = props.translate
+        if self._translate_override is not None:
+            translate = self._translate_override
+
+        return {
             "model": props.model,
             "device": props.device,
             "language": props.language,
-            "translate": props.translate,
+            "translate": translate,
             "word_timestamps": props.word_timestamps,
             "vad_filter": props.vad_filter,
             "vad_parameters": {
@@ -47,61 +124,90 @@ class SUBTITLE_OT_transcribe(Operator):
             "subtitle_channel": props.subtitle_channel,
             "render_fps": scene.render.fps / (scene.render.fps_base or 1.0),
             "compute_type": props.compute_type,
-            # Extract filepath on main thread for safety
-            "filepath": sequence_utils.get_strip_filepath(strip),
+            "filepath": filepath,
+            "scene_name": scene.name,
         }
 
-        if not config["filepath"]:
-            self.report({"ERROR"}, "Could not get file path from selected strip")
-            return {"CANCELLED"}
+    def _validate_filepath(self, filepath: str) -> Optional[str]:
+        if not os.path.exists(filepath):
+            return f"File not found: {filepath}"
+        if not os.path.isfile(filepath):
+            return f"Path is not a file: {filepath}"
+        if not os.access(filepath, os.R_OK):
+            return f"File is not readable: {filepath}"
+        return None
 
-        # Start transcription in background thread
-        props.is_transcribing = True
+    def _get_scene(self, context):
+        if self._scene_name:
+            return bpy.data.scenes.get(self._scene_name) or context.scene
+        return context.scene
+
+    def _drain_queue(self, context):
+        if not self._queue:
+            return
+
+        scene = self._get_scene(context)
+        props = scene.subtitle_editor if scene else context.scene.subtitle_editor
+
+        while True:
+            try:
+                msg = self._queue.get_nowait()
+            except queue.Empty:
+                break
+
+            msg_type = msg.get("type")
+            if msg_type == "progress":
+                props.progress = msg.get("progress", 0.0)
+                props.progress_text = msg.get("text", "")
+            elif msg_type == "error":
+                self._error_message = msg.get("error", "Unknown error")
+                props.progress = 0.0
+                props.progress_text = f"Error: {self._error_message}"
+                self._finished = True
+                self._success = False
+            elif msg_type == "complete":
+                self._segments = msg.get("segments", [])
+                self._finished = True
+                self._success = True
+
+    def _finalize(self, context):
+        scene = self._get_scene(context)
+        props = scene.subtitle_editor if scene else context.scene.subtitle_editor
+
+        if self._success and scene and self._segments is not None:
+            self._create_strips(scene, self._segments, self._config or {})
+            count = len(self._segments)
+            props.progress_text = self._success_message(count)
+            self.report({"INFO"}, props.progress_text)
+        else:
+            error_msg = self._error_message or "Transcription failed"
+            props.progress_text = f"Error: {error_msg}"
+            self.report({"ERROR"}, error_msg)
+
+        self._cleanup(context)
+
+    def _cleanup(self, context):
+        scene = self._get_scene(context)
+        props = scene.subtitle_editor if scene else context.scene.subtitle_editor
+
+        props.is_transcribing = False
         props.progress = 0.0
-        props.progress_text = "Starting transcription..."
 
-        thread = threading.Thread(
-            target=self._transcribe_thread, args=(context, strip, config)
-        )
-        thread.daemon = True
-        thread.start()
+        if self._timer:
+            context.window_manager.event_timer_remove(self._timer)
+            self._timer = None
 
-        return {"FINISHED"}
+    def _cancel(self, context, message: str):
+        scene = self._get_scene(context)
+        props = scene.subtitle_editor if scene else context.scene.subtitle_editor
+        props.progress_text = message
+        self._cleanup(context)
 
-    def _transcribe_thread(self, context, strip, config):
-        """Run transcription in background thread"""
-        print(
-            f"[Subtitle Studio] Starting transcription thread for {config['filepath']}"
-        )
-        # Thread-safe storage for progress data
-        progress_data = {"progress": 0.0, "text": "Starting..."}
+    def _refresh_list(self, scene):
+        sequence_utils.refresh_list(SimpleNamespace(scene=scene))
 
-        def update_props_on_main_thread(progress, text):
-            """Schedule property updates on the main thread using bpy.app.timers"""
-            progress_data["progress"] = progress
-            progress_data["text"] = text
-
-            def apply_updates():
-                # Re-fetch props here (valid on main thread)
-                if context.scene:
-                    props = context.scene.subtitle_editor
-                    props.progress = progress_data["progress"]
-                    props.progress_text = progress_data["text"]
-                return None  # Don't repeat
-
-            bpy.app.timers.register(apply_updates, first_interval=0.0)
-
+    def _transcribe_worker(self, config: Dict[str, Any], out_queue: queue.Queue):
         try:
-            # Get filepath from config (extracted on main thread)
-            filepath = config["filepath"]
-
-            # NOTE: We do NOT check filepath here again, assuming it was checked in execute
-            if not filepath:
-                # Should not happen if execute checks it
-                update_props_on_main_thread(0.0, "Error: Invalid file path")
-                return
-
-            # Initialize transcriber
             tm = transcriber.TranscriptionManager(
                 model_name=config["model"],
                 device=config["device"],
@@ -110,33 +216,31 @@ class SUBTITLE_OT_transcribe(Operator):
 
             cache_dir = file_utils.get_addon_models_dir()
             if not tm.load_model(cache_dir):
-                update_props_on_main_thread(
-                    0.0,
-                    f"Model '{config['model']}' not ready. Download it first or check console.",
-                )
-                bpy.app.timers.register(
-                    lambda: setattr(
-                        context.scene.subtitle_editor, "is_transcribing", False
-                    )
-                    or None,
-                    first_interval=0.0,
+                out_queue.put(
+                    {
+                        "type": "error",
+                        "error": (
+                            f"Model '{config['model']}' not ready. "
+                            "Download it first or check console."
+                        ),
+                    }
                 )
                 return
 
-            # Set up progress callback - uses thread-safe updates
             def progress_callback(progress, text):
-                update_props_on_main_thread(progress, text)
+                out_queue.put({"type": "progress", "progress": progress, "text": text})
 
             tm.set_progress_callback(progress_callback)
 
-            # Extract audio if needed
+            filepath = config["filepath"]
             audio_path = filepath
-            if not filepath.lower().endswith((".wav", ".mp3", ".flac", ".m4a")):
-                update_props_on_main_thread(0.0, "Extracting audio...")
-                audio_path = file_utils.get_temp_filepath("audio_extract.wav")
-                audio_path = tm.extract_audio(filepath, audio_path)
+            temp_audio_path = None
 
-            # Transcribe
+            if not filepath.lower().endswith((".wav", ".mp3", ".flac", ".m4a")):
+                progress_callback(0.0, "Extracting audio...")
+                temp_audio_path = file_utils.get_temp_filepath("audio_extract.wav")
+                audio_path = tm.extract_audio(filepath, temp_audio_path)
+
             segments = list(
                 tm.transcribe(
                     audio_path,
@@ -146,64 +250,43 @@ class SUBTITLE_OT_transcribe(Operator):
                     translate=config["translate"],
                     word_timestamps=config["word_timestamps"],
                     vad_filter=config["vad_filter"],
+                    vad_parameters=config["vad_parameters"],
                 )
             )
 
-            # Create text strips in main thread
-            bpy.app.timers.register(
-                lambda: self._create_strips(context, segments, config),
-                first_interval=0.0,
-            )
+            if temp_audio_path and os.path.exists(temp_audio_path):
+                os.remove(temp_audio_path)
 
-            # Clean up temp file
-            if audio_path != filepath and os.path.exists(audio_path):
-                os.remove(audio_path)
-
-            update_props_on_main_thread(1.0, f"Created {len(segments)} subtitle strips")
-
+            out_queue.put({"type": "complete", "segments": segments})
         except Exception as e:
-            update_props_on_main_thread(0.0, f"Error: {str(e)}")
-        finally:
-            # Schedule cleanup on main thread
-            def cleanup_props():
-                if context.scene:
-                    props = context.scene.subtitle_editor
-                    props.is_transcribing = False
-                    props.progress = 0.0
-                return None
+            out_queue.put({"type": "error", "error": str(e)})
 
-            bpy.app.timers.register(cleanup_props, first_interval=0.0)
+    def _success_message(self, count: int) -> str:
+        return f"Created {count} subtitle strips"
 
-    def _create_strips(self, context, segments, config):
-        """Create text strips from transcription (called in main thread)"""
-        scene = context.scene
+    def _create_strips(
+        self,
+        scene,
+        segments: List[transcriber.TranscriptionSegment],
+        config: Dict[str, Any],
+    ) -> None:
+        raise NotImplementedError
 
-        # Determine channel
+
+class SUBTITLE_OT_transcribe(_BaseTranscribeOperator):
+    """Transcribe selected audio/video strip to subtitles"""
+
+    bl_idname = "subtitle.transcribe"
+    bl_label = "Transcribe"
+    bl_description = "Transcribe selected strip to subtitles using AI"
+
+    _translate_override = None
+    _start_message = "Starting transcription..."
+
+    def _create_strips(self, scene, segments, config) -> None:
         channel = config.get("subtitle_channel", 3)
-        # If user wants a specific channel, we should respect it, or find next available if occupied?
-        # User request says: "put it on a track defined by bpy.data.scenes["Scene"].subtitle_editor.subtitle_channel"
-        # Implies strict adherence to that channel.
-        # But commonly addons find *next available* from that point.
-        # Let's check existing logic: it starts at 3 and finds empty.
-        # New logic: Start at config["subtitle_channel"] and find next available if needed?
-        # Or just use that channel? Usually subtitles shouldn't overlap.
-        # If we just dump everything on one channel they might overlap if segments overlap (rare for whisper).
-        # Let's respect the START channel, and if there are existing strips *on that channel* that overlap...
-        # The existing logic finds a completely empty channel? No, it finding a channel number higher than any existing strip?
-        # "if seq.channel >= channel: channel = seq.channel + 1" -> this finds the *highest* used channel + 1.
-        # This completely ignores "3" if there's something on 4.
-
-        # Correct logic for "use defined channel":
-        # Just use the channel provided. If the user says channel 5, put it on channel 5.
-        # If they want it on a new channel, they change the setting.
-        # However, to avoid overwriting/mess, maybe we should just use it.
-
-        # Let's trust the user's "defined by... subtitle_channel" request literally.
-        # But we need render_fps too.
-
         render_fps = config["render_fps"]
 
-        # Create strips
         for i, seg in enumerate(segments):
             frame_start = int(seg.start * render_fps)
             frame_end = int(seg.end * render_fps)
@@ -218,7 +301,6 @@ class SUBTITLE_OT_transcribe(Operator):
             )
 
             if strip:
-                # Add to UI list
                 item = scene.text_strip_items.add()
                 item.name = strip.name
                 item.text = seg.text
@@ -226,185 +308,25 @@ class SUBTITLE_OT_transcribe(Operator):
                 item.frame_end = frame_end
                 item.channel = channel
 
-        # Refresh UI
-        sequence_utils.refresh_list(context)
-        return None  # Don't repeat
+        self._refresh_list(scene)
 
 
-class SUBTITLE_OT_translate(Operator):
+class SUBTITLE_OT_translate(_BaseTranscribeOperator):
     """Translate selected audio/video strip to English subtitles"""
 
     bl_idname = "subtitle.translate"
     bl_label = "Translate"
     bl_description = "Translate non-English audio to English subtitles"
-    bl_options = {"REGISTER", "UNDO"}
 
-    def execute(self, context):
-        scene = context.scene
-        props = scene.subtitle_editor
+    _translate_override = True
+    _start_message = "Starting translation to English..."
 
-        # Get selected strip
-        strip = sequence_utils.get_selected_strip(context)
-        if not strip:
-            self.report({"ERROR"}, "Please select an audio or video strip")
-            return {"CANCELLED"}
+    def _success_message(self, count: int) -> str:
+        return f"Created {count} translated subtitle strips"
 
-        # Extract settings to dictionary (read on main thread)
-        config = {
-            "model": props.model,
-            "device": props.device,
-            "language": props.language,
-            # "translate": True, # Implied for this operator
-            "word_timestamps": props.word_timestamps,
-            "vad_filter": props.vad_filter,
-            "vad_parameters": {
-                "threshold": props.vad_threshold,
-                "min_speech_duration_ms": props.min_speech_duration_ms,
-                "min_silence_duration_ms": props.min_silence_duration_ms,
-                "speech_pad_ms": props.speech_pad_ms,
-            },
-            "subtitle_channel": props.subtitle_channel,
-            "render_fps": scene.render.fps / (scene.render.fps_base or 1.0),
-            "compute_type": props.compute_type,
-            # Extract filepath on main thread for safety
-            "filepath": sequence_utils.get_strip_filepath(strip),
-        }
-
-        if not config["filepath"]:
-            self.report({"ERROR"}, "Could not get file path from selected strip")
-            return {"CANCELLED"}
-
-        # Start translation in background thread
-        props.is_transcribing = True
-        props.progress = 0.0
-        props.progress_text = "Starting translation to English..."
-
-        thread = threading.Thread(
-            target=self._translate_thread, args=(context, strip, config)
-        )
-        thread.daemon = True
-        thread.start()
-
-        return {"FINISHED"}
-
-    def _translate_thread(self, context, strip, config):
-        """Run translation in background thread"""
-        print(f"[Subtitle Studio] Starting translation thread for {config['filepath']}")
-        # Thread-safe storage for progress data
-        progress_data = {"progress": 0.0, "text": "Starting..."}
-
-        def update_props_on_main_thread(progress, text):
-            """Schedule property updates on the main thread using bpy.app.timers"""
-            progress_data["progress"] = progress
-            progress_data["text"] = text
-
-            def apply_updates():
-                if context.scene:
-                    props = context.scene.subtitle_editor
-                    props.progress = progress_data["progress"]
-                    props.progress_text = progress_data["text"]
-                return None  # Don't repeat
-
-            bpy.app.timers.register(apply_updates, first_interval=0.0)
-
-        try:
-            # Get filepath from config (extracted on main thread)
-            filepath = config["filepath"]
-
-            # NOTE: We do NOT check filepath here again, assuming it was checked in execute
-            if not filepath:
-                # Should not happen if execute checks it
-                update_props_on_main_thread(0.0, "Error: Invalid file path")
-                return
-
-            # Initialize transcriber
-            tm = transcriber.TranscriptionManager(
-                model_name=config["model"],
-                device=config["device"],
-                compute_type=config["compute_type"],
-            )
-
-            cache_dir = file_utils.get_addon_models_dir()
-            if not tm.load_model(cache_dir):
-                update_props_on_main_thread(
-                    0.0,
-                    f"Model '{config['model']}' not ready. Download it first or check console.",
-                )
-                bpy.app.timers.register(
-                    lambda: setattr(
-                        context.scene.subtitle_editor, "is_transcribing", False
-                    )
-                    or None,
-                    first_interval=0.0,
-                )
-                return
-
-            # Set up progress callback - uses thread-safe updates
-            def progress_callback(progress, text):
-                update_props_on_main_thread(progress, text)
-
-            tm.set_progress_callback(progress_callback)
-
-            # Extract audio if needed
-            audio_path = filepath
-            if not filepath.lower().endswith((".wav", ".mp3", ".flac", ".m4a")):
-                update_props_on_main_thread(0.0, "Extracting audio...")
-                audio_path = file_utils.get_temp_filepath("audio_extract.wav")
-                audio_path = tm.extract_audio(filepath, audio_path)
-
-            # Translate (always translate to English)
-            segments = list(
-                tm.transcribe(
-                    audio_path,
-                    language=config["language"]
-                    if config["language"] != "auto"
-                    else None,
-                    translate=True,  # Force translate
-                    word_timestamps=config["word_timestamps"],
-                    vad_filter=config["vad_filter"],
-                )
-            )
-
-            # Create text strips in main thread
-            bpy.app.timers.register(
-                lambda: self._create_strips(context, segments, config),
-                first_interval=0.0,
-            )
-
-            # Clean up temp file
-            if audio_path != filepath and os.path.exists(audio_path):
-                os.remove(audio_path)
-
-            update_props_on_main_thread(
-                1.0, f"Created {len(segments)} translated subtitle strips"
-            )
-
-        except Exception as e:
-            import traceback
-
-            traceback.print_exc()
-            print(f"[Subtitle Studio] Error in translation thread: {e}")
-            update_props_on_main_thread(0.0, f"Error: {str(e)}")
-        finally:
-            # Schedule cleanup on main thread
-            def cleanup_props():
-                if context.scene:
-                    props = context.scene.subtitle_editor
-                    props.is_transcribing = False
-                    props.progress = 0.0
-                return None
-
-            bpy.app.timers.register(cleanup_props, first_interval=0.0)
-
-    def _create_strips(self, context, segments, config):
-        """Create text strips from translation (called in main thread)"""
-        scene = context.scene
-        # props = scene.subtitle_editor # Don't rely on props if we can avoid it, but for defaults it's okay if on main thread
-
-        # Determine channel
+    def _create_strips(self, scene, segments, config) -> None:
         channel = config.get("subtitle_channel", 2)
         if scene.sequence_editor:
-            # Find empty channel
             for seq in scene.sequence_editor.sequences:
                 if seq.channel >= channel:
                     channel = seq.channel + 1
@@ -412,7 +334,6 @@ class SUBTITLE_OT_translate(Operator):
 
         render_fps = config["render_fps"]
 
-        # Create strips
         for i, seg in enumerate(segments):
             frame_start = int(seg.start * render_fps)
             frame_end = int(seg.end * render_fps)
@@ -427,7 +348,6 @@ class SUBTITLE_OT_translate(Operator):
             )
 
             if strip:
-                # Add to UI list
                 item = scene.text_strip_items.add()
                 item.name = strip.name
                 item.text = seg.text
@@ -435,6 +355,10 @@ class SUBTITLE_OT_translate(Operator):
                 item.frame_end = frame_end
                 item.channel = channel
 
-        # Refresh UI
-        sequence_utils.refresh_list(context)
-        return None  # Don't repeat
+        self._refresh_list(scene)
+
+
+classes = [
+    SUBTITLE_OT_transcribe,
+    SUBTITLE_OT_translate,
+]
