@@ -571,6 +571,10 @@ class SUBTITLE_OT_adjust_speaker_count(Operator):
             return context.window_manager.invoke_props_dialog(self)
         return self.execute(context)
 
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "name", text="Speaker Name")
+
     def execute(self, context):
         scene = context.scene
         props = getattr(scene, "subtitle_editor", None)
