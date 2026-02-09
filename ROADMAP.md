@@ -31,18 +31,13 @@
 ## Milestone 1 — UI/Workflow Polish
 **Outcome:** Subtitle Studio feels like a real Blender tool end-to-end.
 
-- [ ] Panel layout cleanup (VSE sidebar / add-on prefs)
-- [ ] Clear “happy path” workflow:
-  - Load media
-  - Import/generate subtitles
-  - Adjust
-  - Export
-- [ ] Undo/redo correctness (operators structured properly)
-- [ ] Better selection and editing tools:
-  - edit subtitle text in UI list
+- [ ] Panel layout cleanup for VSE sidebar and add-on prefs (section order, headers, spacing)
+- [ ] Undo/redo correctness documented per operator: modal vs non‑modal, `bl_options={'UNDO'}`
+- [ ] Better selection and editing tools with explicit UI affordances:
+  - inline text edit in list
   - jump timeline to cue
-  - adjust in/out with buttons
-- [ ] Presets for styling (subtitle theme presets)
+  - nudge in/out with step size buttons
+- [ ] Make Trascription & Translation Ui Block Look much better and more intuitive.
 
 **Acceptance criteria**
 - A new user can install and create subtitles in <5 minutes with minimal confusion.
