@@ -16,13 +16,15 @@ class SEQUENCER_PT_panel(Panel):
     bl_region_type = "UI"
     bl_category = "Subtitle Studio"
 
-    @classmethod
-    def poll(cls, context):
-        scene = getattr(context, "scene", None)
-        return bool(scene and hasattr(scene, "subtitle_editor"))
-
     def draw(self, context):
         layout = self.layout
+        scene = context.scene
+        if not getattr(scene, "subtitle_editor", None):
+            box = layout.box()
+            box.alert = True
+            box.label(text="Subtitle Studio not registered", icon="ERROR")
+            box.label(text="Reload the addon to restore UI")
+            return
         scene = context.scene
 
         tab_row = layout.row(align=True)
@@ -173,13 +175,18 @@ class SEQUENCER_PT_whisper_panel(Panel):
 
     @classmethod
     def poll(cls, context):
-        scene = getattr(context, "scene", None)
-        return bool(scene and hasattr(scene, "subtitle_editor"))
+        return context.scene is not None
 
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        props = scene.subtitle_editor
+        props = getattr(scene, "subtitle_editor", None)
+        if not props:
+            box = layout.box()
+            box.alert = True
+            box.label(text="Subtitle Studio not registered", icon="ERROR")
+            box.label(text="Reload the addon to restore UI")
+            return
 
         # Dependencies Section
         col = layout.column()
