@@ -611,8 +611,10 @@ class SUBTITLE_OT_adjust_speaker_count(Operator):
                 return {"CANCELLED"}
             if new_count == 2:
                 props.speaker_name_2 = value
+                props.speaker_index = 2
             elif new_count == 3:
                 props.speaker_name_3 = value
+                props.speaker_index = 3
 
         print(
             "[Subtitle Studio] update_speaker_tab/update_speaker_channels/refresh_list",
