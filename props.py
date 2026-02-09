@@ -15,7 +15,7 @@ from bpy.types import PropertyGroup
 
 # Import language items directly
 from .constants import LANGUAGE_ITEMS
-from .utils import file_utils
+from .utils import file_utils, sequence_utils
 
 
 def speaker_items(self, context):
@@ -430,17 +430,14 @@ class SubtitleEditorProperties(PropertyGroup):
             )
 
             # Also update the actual strip in the sequencer
-            try:
-                import bpy
-
-                for strip in context.scene.sequence_editor.sequences:
+            sequences = sequence_utils._get_sequence_collection(context.scene)
+            if sequences:
+                for strip in sequences:
                     if strip.name == current_name:
                         if hasattr(strip, "text"):
                             strip.text = updated_text
                         strip.name = item.name
                         break
-            except Exception:
-                pass
 
         screen = getattr(context, "screen", None)
         if screen:
@@ -782,7 +779,11 @@ class SubtitleEditorProperties(PropertyGroup):
         subtitle_names = {item.name for item in scene.text_strip_items}
         warning = ""
 
-        for strip in scene.sequence_editor.sequences:
+        sequences = sequence_utils._get_sequence_collection(scene)
+        if not sequences:
+            return
+
+        for strip in sequences:
             if strip.channel in target_channels:
                 if strip.name not in subtitle_names or strip.type != "TEXT":
                     warning = (
@@ -794,9 +795,7 @@ class SubtitleEditorProperties(PropertyGroup):
         self.speaker_warning = warning
 
         strip_by_name = {
-            strip.name: strip
-            for strip in scene.sequence_editor.sequences
-            if strip.type == "TEXT"
+            strip.name: strip for strip in sequences if strip.type == "TEXT"
         }
 
         for item in scene.text_strip_items:
