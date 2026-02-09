@@ -16,6 +16,11 @@ class SEQUENCER_PT_panel(Panel):
     bl_region_type = "UI"
     bl_category = "Subtitle Studio"
 
+    @classmethod
+    def poll(cls, context):
+        scene = getattr(context, "scene", None)
+        return bool(scene and hasattr(scene, "subtitle_editor"))
+
     def draw(self, context):
         layout = self.layout
         scene = context.scene
@@ -168,7 +173,8 @@ class SEQUENCER_PT_whisper_panel(Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.scene is not None
+        scene = getattr(context, "scene", None)
+        return bool(scene and hasattr(scene, "subtitle_editor"))
 
     def draw(self, context):
         layout = self.layout

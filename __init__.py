@@ -101,6 +101,8 @@ _addon_properties = {
 # List of classes to register manually (not auto-discovered)
 _manual_classes = [
     SubtitleEditorAddonPreferences,
+    SubtitleEditorProperties,
+    TextStripItem,
 ]
 
 
