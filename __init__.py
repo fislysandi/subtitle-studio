@@ -107,8 +107,16 @@ _manual_classes = [
 def _sync_speaker_names_handler(depsgraph):
     for scene in bpy.data.scenes:
         props = getattr(scene, "subtitle_editor", None)
-        if props:
-            props.sync_speaker_names_from_scene(scene)
+        if not props or not scene.sequence_editor:
+            continue
+
+        strips = [s for s in scene.sequence_editor.strips if s.type == "TEXT"]
+        channel_state = {s.name: s.channel for s in strips}
+        cache = scene.get("_subtitle_channel_cache", {})
+
+        if channel_state != cache:
+            scene["_subtitle_channel_cache"] = channel_state
+            props.update_speaker_channels(bpy.context)
 
 
 # =============================================================================
