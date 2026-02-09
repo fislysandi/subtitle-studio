@@ -25,7 +25,7 @@ def speaker_items(self, context):
         getattr(self, "speaker_name_2", "Speaker 2"),
         getattr(self, "speaker_name_3", "Speaker 3"),
     ]
-    return [(str(idx + 1), names[idx], "") for idx in range(count)]
+    return [(idx + 1, names[idx], "") for idx in range(count)]
 
 
 class TextStripItem(PropertyGroup):
@@ -461,9 +461,8 @@ class SubtitleEditorProperties(PropertyGroup):
             return
         try:
             self.speaker_index = int(self.speaker_choice)
-        except ValueError:
+        except (TypeError, ValueError):
             self.speaker_index = 1
-        self.update_speaker_tab(context)
 
     def _apply_speaker_prefix(self, text: str, speaker: str) -> str:
         if not self.show_speaker_prefix_in_text:
@@ -544,7 +543,7 @@ class SubtitleEditorProperties(PropertyGroup):
             self.speaker_index = self.speaker_count
 
         self._updating_speaker_choice = True
-        self.speaker_choice = str(self.speaker_index)
+        self.speaker_choice = self.speaker_index
         self._updating_speaker_choice = False
 
         label = self._speaker_label()
