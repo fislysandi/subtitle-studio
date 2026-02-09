@@ -20,6 +20,7 @@ from .utils import file_utils
 
 def speaker_items(self, context):
     count = getattr(self, "speaker_count", 3) or 3
+    count = min(count, 3)  # Clamp to names list bounds
     if count < 1:
         count = 1
     names = [
@@ -1047,7 +1048,7 @@ class SubtitleEditorProperties(PropertyGroup):
         name="Speaker",
         description="Active speaker selection",
         items=speaker_items,
-        default="1",
+        default=0,
         update=lambda self, context: self.update_speaker_choice(context),
     )
 
