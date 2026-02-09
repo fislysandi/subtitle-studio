@@ -402,7 +402,9 @@ class SubtitleEditorProperties(PropertyGroup):
 
     def update_text(self, context):
         """Update the selected text strip when text changes"""
-        if getattr(self, "_updating_text", False):
+        if getattr(self, "_updating_text", False) or getattr(
+            self, "_updating_name", False
+        ):
             return
         if not context.scene:
             return
@@ -519,13 +521,20 @@ class SubtitleEditorProperties(PropertyGroup):
             base = f"{speaker}: {fallback_index}"
 
         new_name = self._unique_strip_name(scene, base, current_name)
-        item.name = new_name
+        if new_name == current_name:
+            return
 
-        if scene.sequence_editor:
-            for strip in scene.sequence_editor.strips:
-                if strip.name == current_name and strip.type == "TEXT":
-                    strip.name = new_name
-                    break
+        self._updating_name = True
+        try:
+            item.name = new_name
+
+            if scene.sequence_editor:
+                for strip in scene.sequence_editor.strips:
+                    if strip.name == current_name and strip.type == "TEXT":
+                        strip.name = new_name
+                        break
+        finally:
+            self._updating_name = False
 
     def update_speaker_tab(self, context):
         if not context.scene:
