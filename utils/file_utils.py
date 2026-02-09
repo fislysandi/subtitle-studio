@@ -41,10 +41,12 @@ def is_model_cached(model_name: str) -> bool:
     """Check if model is cached (fast check)"""
     models_dir = get_addon_models_dir()
     model_path = os.path.join(models_dir, model_name)
-    
+
     # Check for essential files (same logic as DownloadManager)
     # faster-whisper needs model.bin and config.json
-    has_bin = os.path.exists(os.path.join(model_path, "model.bin"))
-    has_config = os.path.exists(os.path.join(model_path, "config.json"))
-    
+    bin_path = os.path.join(model_path, "model.bin")
+    config_path = os.path.join(model_path, "config.json")
+    has_bin = os.path.exists(bin_path) and os.path.getsize(bin_path) > 1024
+    has_config = os.path.exists(config_path) and os.path.getsize(config_path) > 10
+
     return has_bin and has_config

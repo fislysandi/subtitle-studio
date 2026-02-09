@@ -93,7 +93,7 @@ class TextStripItem(PropertyGroup):
             return
 
         target_strip = None
-        for strip in scene.sequence_editor.strips:
+        for strip in scene.sequence_editor.sequences:
             if strip.name == self.name and strip.type == "TEXT":
                 target_strip = strip
                 break
@@ -105,7 +105,7 @@ class TextStripItem(PropertyGroup):
         prev_end = None
         next_start = None
 
-        for strip in scene.sequence_editor.strips:
+        for strip in scene.sequence_editor.sequences:
             if strip.type != "TEXT" or strip == target_strip:
                 continue
             if strip.channel != channel:
@@ -126,17 +126,16 @@ class TextStripItem(PropertyGroup):
             if prev_end is not None:
                 new_start = max(new_start, prev_end)
             if new_start != start:
-                target_strip.frame_final_start = new_start
-                # keep tail anchored by reapplying previous end
-                target_strip.frame_final_end = end
+                target_strip.frame_start = new_start
+                target_strip.frame_duration = max(1, end - new_start)
         elif source == "end":
             new_end = int(self.frame_end)
             new_end = max(new_end, start + 1)
             if next_start is not None:
                 new_end = min(new_end, next_start)
             if new_end != end:
-                target_strip.frame_final_end = new_end
-                target_strip.frame_final_start = start
+                target_strip.frame_start = start
+                target_strip.frame_duration = max(1, new_end - start)
         else:
             return
 
@@ -433,7 +432,7 @@ class SubtitleEditorProperties(PropertyGroup):
             try:
                 import bpy
 
-                for strip in context.scene.sequence_editor.strips:
+                for strip in context.scene.sequence_editor.sequences:
                     if strip.name == current_name:
                         if hasattr(strip, "text"):
                             strip.text = updated_text
@@ -461,15 +460,48 @@ class SubtitleEditorProperties(PropertyGroup):
     def _speaker_choice_ids(self):
         return {item[0] for item in speaker_items(self, None)}
 
+    def _ensure_speaker_channel_range(self, scene) -> None:
+        if not scene or not scene.sequence_editor:
+            return
+        speaker_total = max(1, int(self.speaker_count))
+        target_channel = self.subtitle_channel + speaker_total - 1
+        self._ensure_channel_count(scene, target_channel)
+
+    def _set_speaker_choice(self, value: str) -> None:
+        if self.speaker_choice == value:
+            return
+        self._updating_speaker_choice = True
+        try:
+            self.speaker_choice = value
+        finally:
+            self._updating_speaker_choice = False
+
+    def _sync_speaker_choice_to_index(self) -> None:
+        choice_ids = self._speaker_choice_ids()
+        choice = str(self.speaker_index)
+        if choice not in choice_ids:
+            choice = next(iter(choice_ids), "1")
+        self._set_speaker_choice(choice)
+
     def update_speaker_choice(self, context):
         if getattr(self, "_updating_speaker_choice", False):
             return
-        if self.speaker_choice not in self._speaker_choice_ids():
+        scene = getattr(context, "scene", None) if context else None
+        if not scene:
             return
+        choice_ids = self._speaker_choice_ids()
+        if self.speaker_choice not in choice_ids:
+            self._set_speaker_choice(next(iter(choice_ids), "1"))
+            if getattr(self, "_updating_speaker_tab", False) or getattr(
+                self, "_updating_speaker_channels", False
+            ):
+                return
         try:
-            self.speaker_index = int(self.speaker_choice)
+            new_index = int(self.speaker_choice)
         except (TypeError, ValueError):
-            self.speaker_index = 1
+            new_index = 1
+        if new_index != self.speaker_index:
+            self.speaker_index = new_index
 
     def _apply_speaker_prefix(self, text: str, speaker: str) -> str:
         if not self.show_speaker_prefix_in_text:
@@ -505,7 +537,7 @@ class SubtitleEditorProperties(PropertyGroup):
             return base
         existing = {
             strip.name
-            for strip in scene.sequence_editor.strips
+            for strip in scene.sequence_editor.sequences
             if strip.name != current_name
         }
         if base not in existing:
@@ -535,77 +567,82 @@ class SubtitleEditorProperties(PropertyGroup):
             item.name = new_name
 
             if scene.sequence_editor:
-                for strip in scene.sequence_editor.strips:
+                for strip in scene.sequence_editor.sequences:
                     if strip.name == current_name and strip.type == "TEXT":
                         strip.name = new_name
                         break
         finally:
             self._updating_name = False
 
-    def update_speaker_tab(self, context):
+    def update_speaker_tab(self, context, sync_from_channels: bool = True):
+        if getattr(self, "_updating_speaker_tab", False):
+            return
         if not context.scene:
             return
+        self._updating_speaker_tab = True
+        try:
+            self._ensure_speaker_channel_range(context.scene)
+            if self.speaker_index > self.speaker_count:
+                self.speaker_index = self.speaker_count
 
-        if self.speaker_index > self.speaker_count:
-            self.speaker_index = self.speaker_count
+            self._sync_speaker_choice_to_index()
 
-        self._updating_speaker_choice = True
-        choice = str(self.speaker_index)
-        if choice not in self._speaker_choice_ids():
-            choice = next(iter(self._speaker_choice_ids()), "1")
-        self.speaker_choice = choice
-        self._updating_speaker_choice = False
+            label = self._speaker_label()
+            selected = []
 
-        label = self._speaker_label()
-        selected = []
+            if context.scene.sequence_editor:
+                for strip in context.scene.sequence_editor.sequences:
+                    if strip.select and strip.type == "TEXT":
+                        selected.append(strip.name)
 
-        if context.scene.sequence_editor:
-            for strip in context.scene.sequence_editor.strips:
-                if strip.select and strip.type == "TEXT":
-                    selected.append(strip.name)
-
-        if not selected:
-            index = context.scene.text_strip_items_index
-            items = context.scene.text_strip_items
-            if 0 <= index < len(items):
-                current_name = items[index].name
-                items[index].speaker = label
-                items[index].text = self._apply_speaker_prefix(items[index].text, label)
-                self._update_strip_name(
-                    context.scene,
-                    items[index],
-                    items[index].text,
-                    index + 1,
-                    current_name,
+            if not selected:
+                index = context.scene.text_strip_items_index
+                items = context.scene.text_strip_items
+                if 0 <= index < len(items):
+                    current_name = items[index].name
+                    items[index].speaker = label
+                    items[index].text = self._apply_speaker_prefix(
+                        items[index].text, label
+                    )
+                    self._update_strip_name(
+                        context.scene,
+                        items[index],
+                        items[index].text,
+                        index + 1,
+                        current_name,
+                    )
+                    self._updating_text = True
+                    self.current_text = items[index].text
+                    self._updating_text = False
+                self.update_speaker_channels(
+                    context, sync_from_channels=sync_from_channels
                 )
+                return
+
+            for item in context.scene.text_strip_items:
+                if item.name in selected:
+                    current_name = item.name
+                    item.speaker = label
+                    item.text = self._apply_speaker_prefix(item.text, label)
+                    idx = context.scene.text_strip_items.find(item.name)
+                    self._update_strip_name(
+                        context.scene,
+                        item,
+                        item.text,
+                        (idx + 1 if idx >= 0 else 1),
+                        current_name,
+                    )
+
+            active_index = context.scene.text_strip_items_index
+            if 0 <= active_index < len(context.scene.text_strip_items):
+                active_item = context.scene.text_strip_items[active_index]
                 self._updating_text = True
-                self.current_text = items[index].text
+                self.current_text = active_item.text
                 self._updating_text = False
-            self.update_speaker_channels(context)
-            return
 
-        for item in context.scene.text_strip_items:
-            if item.name in selected:
-                current_name = item.name
-                item.speaker = label
-                item.text = self._apply_speaker_prefix(item.text, label)
-                idx = context.scene.text_strip_items.find(item.name)
-                self._update_strip_name(
-                    context.scene,
-                    item,
-                    item.text,
-                    (idx + 1 if idx >= 0 else 1),
-                    current_name,
-                )
-
-        active_index = context.scene.text_strip_items_index
-        if 0 <= active_index < len(context.scene.text_strip_items):
-            active_item = context.scene.text_strip_items[active_index]
-            self._updating_text = True
-            self.current_text = active_item.text
-            self._updating_text = False
-
-        self.update_speaker_channels(context)
+            self.update_speaker_channels(context, sync_from_channels=sync_from_channels)
+        finally:
+            self._updating_speaker_tab = False
 
     def _set_channel_name(self, scene, channel: int, name: str) -> None:
         if not scene.sequence_editor:
@@ -614,9 +651,48 @@ class SubtitleEditorProperties(PropertyGroup):
         if 0 <= channel - 1 < len(channels):
             channels[channel - 1].name = name
 
-    def sync_speaker_names_from_scene(self, scene) -> None:
+    def _ensure_channel_count(self, scene, channel_index: int) -> None:
+        if getattr(self, "_updating_channel_init", False):
+            return
+        if not scene.sequence_editor:
+            scene.sequence_editor_create()
+        if not scene.sequence_editor:
+            return
+        channels = scene.sequence_editor.channels
+        try:
+            target = int(channel_index)
+        except (TypeError, ValueError):
+            return
+        if target < 1:
+            target = 1
+        if len(channels) >= target:
+            return
+        if not hasattr(channels, "new"):
+            return
+        self._updating_channel_init = True
+        try:
+            while len(channels) < target:
+                try:
+                    channels.new()
+                except TypeError:
+                    try:
+                        channels.new(name=f"Channel {len(channels) + 1}")
+                    except Exception:
+                        break
+        finally:
+            self._updating_channel_init = False
+
+    def sync_speaker_names_from_scene(self, scene, speaker_total=None) -> None:
         if not scene or not scene.sequence_editor:
             return
+
+        if speaker_total is None:
+            speaker_total = 3
+        try:
+            speaker_total = int(speaker_total)
+        except (TypeError, ValueError):
+            speaker_total = 3
+        speaker_total = max(1, min(3, speaker_total))
 
         channels = scene.sequence_editor.channels
         base = self.subtitle_channel
@@ -635,47 +711,69 @@ class SubtitleEditorProperties(PropertyGroup):
             if channel_name != default_name and channel_name != current:
                 setter(channel_name)
 
-        _maybe_update(
-            base, self.speaker_name_1, lambda v: setattr(self, "speaker_name_1", v)
-        )
-        _maybe_update(
-            base + 1, self.speaker_name_2, lambda v: setattr(self, "speaker_name_2", v)
-        )
-        _maybe_update(
-            base + 2, self.speaker_name_3, lambda v: setattr(self, "speaker_name_3", v)
-        )
+        if speaker_total >= 1:
+            _maybe_update(
+                base,
+                self.speaker_name_1,
+                lambda v: setattr(self, "speaker_name_1", v),
+            )
+        if speaker_total >= 2:
+            _maybe_update(
+                base + 1,
+                self.speaker_name_2,
+                lambda v: setattr(self, "speaker_name_2", v),
+            )
+        if speaker_total >= 3:
+            _maybe_update(
+                base + 2,
+                self.speaker_name_3,
+                lambda v: setattr(self, "speaker_name_3", v),
+            )
 
     def sync_speaker_names_from_channels(self, context) -> None:
         scene = getattr(context, "scene", None)
-        self.sync_speaker_names_from_scene(scene)
+        self.sync_speaker_names_from_scene(scene, self.speaker_count)
 
-    def _reset_speaker_channel_names(self, scene, target_channels) -> None:
+    def _reset_speaker_channel_names(
+        self, scene, target_channels, speaker_names
+    ) -> None:
         if not scene.sequence_editor:
             return
         channels = scene.sequence_editor.channels
-        speaker_names = set(self._speaker_names())
+        speaker_names = set(speaker_names)
         for index, channel in enumerate(channels, start=1):
             if index in target_channels:
                 continue
             if channel.name in speaker_names:
                 channel.name = f"Channel {index}"
 
-    def update_speaker_channels_for_scene(self, scene) -> None:
-        if not scene or not scene.sequence_editor:
+    def update_speaker_channels_for_scene(
+        self, scene, sync_from_channels: bool = True
+    ) -> None:
+        if not scene:
+            return
+        if not scene.sequence_editor:
+            scene.sequence_editor_create()
+        if not scene.sequence_editor:
             return
 
-        self.sync_speaker_names_from_scene(scene)
+        speaker_total = max(1, min(3, int(self.speaker_count)))
+        target_channel = self.subtitle_channel + speaker_total - 1
+        self._ensure_channel_count(scene, target_channel)
+
+        if sync_from_channels:
+            self.sync_speaker_names_from_scene(scene, speaker_total)
+
+        speaker_names = self._speaker_names()[:speaker_total]
 
         mapping = {
-            self.speaker_name_1: self.subtitle_channel,
-            self.speaker_name_2: self.subtitle_channel + 1,
-            self.speaker_name_3: self.subtitle_channel + 2,
+            name: self.subtitle_channel + offset
+            for offset, name in enumerate(speaker_names)
         }
 
         channel_to_speaker = {
-            self.subtitle_channel: self.speaker_name_1,
-            self.subtitle_channel + 1: self.speaker_name_2,
-            self.subtitle_channel + 2: self.speaker_name_3,
+            self.subtitle_channel + offset: name
+            for offset, name in enumerate(speaker_names)
         }
 
         target_channels = set(mapping.values())
@@ -683,8 +781,8 @@ class SubtitleEditorProperties(PropertyGroup):
         subtitle_names = {item.name for item in scene.text_strip_items}
         warning = ""
 
-        for strip in scene.sequence_editor.strips:
-            if strip.channel in mapping.values():
+        for strip in scene.sequence_editor.sequences:
+            if strip.channel in target_channels:
                 if strip.name not in subtitle_names or strip.type != "TEXT":
                     warning = (
                         "Speaker channel conflict: rename or move existing strips "
@@ -696,7 +794,7 @@ class SubtitleEditorProperties(PropertyGroup):
 
         strip_by_name = {
             strip.name: strip
-            for strip in scene.sequence_editor.strips
+            for strip in scene.sequence_editor.sequences
             if strip.type == "TEXT"
         }
 
@@ -729,16 +827,23 @@ class SubtitleEditorProperties(PropertyGroup):
                     current_name,
                 )
 
-        self._reset_speaker_channel_names(scene, target_channels)
-        self._set_channel_name(scene, self.subtitle_channel, self.speaker_name_1)
-        self._set_channel_name(scene, self.subtitle_channel + 1, self.speaker_name_2)
-        self._set_channel_name(scene, self.subtitle_channel + 2, self.speaker_name_3)
+        self._reset_speaker_channel_names(scene, target_channels, speaker_names)
+        for offset, name in enumerate(speaker_names):
+            self._set_channel_name(scene, self.subtitle_channel + offset, name)
 
-    def update_speaker_channels(self, context):
+    def update_speaker_channels(self, context, sync_from_channels: bool = True):
+        if getattr(self, "_updating_speaker_channels", False):
+            return
         scene = getattr(context, "scene", None)
         if not scene:
             return
-        self.update_speaker_channels_for_scene(scene)
+        self._updating_speaker_channels = True
+        try:
+            self.update_speaker_channels_for_scene(
+                scene, sync_from_channels=sync_from_channels
+            )
+        finally:
+            self._updating_speaker_channels = False
 
     # Import/Export settings
     import_format: EnumProperty(
@@ -926,6 +1031,7 @@ class SubtitleEditorProperties(PropertyGroup):
         default=3,
         min=1,
         max=3,
+        update=lambda self, context: self.update_speaker_tab(context),
     )
 
     speaker_index: IntProperty(
@@ -941,7 +1047,7 @@ class SubtitleEditorProperties(PropertyGroup):
         name="Speaker",
         description="Active speaker selection",
         items=speaker_items,
-        default=0,
+        default="1",
         update=lambda self, context: self.update_speaker_choice(context),
     )
 

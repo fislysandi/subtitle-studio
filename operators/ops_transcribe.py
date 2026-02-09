@@ -45,7 +45,7 @@ class SUBTITLE_OT_transcribe(Operator):
                 "speech_pad_ms": props.speech_pad_ms,
             },
             "subtitle_channel": props.subtitle_channel,
-            "render_fps": scene.render.fps,
+            "render_fps": scene.render.fps / (scene.render.fps_base or 1.0),
             "compute_type": props.compute_type,
             # Extract filepath on main thread for safety
             "filepath": sequence_utils.get_strip_filepath(strip),
@@ -264,7 +264,7 @@ class SUBTITLE_OT_translate(Operator):
                 "speech_pad_ms": props.speech_pad_ms,
             },
             "subtitle_channel": props.subtitle_channel,
-            "render_fps": scene.render.fps,
+            "render_fps": scene.render.fps / (scene.render.fps_base or 1.0),
             "compute_type": props.compute_type,
             # Extract filepath on main thread for safety
             "filepath": sequence_utils.get_strip_filepath(strip),
@@ -405,7 +405,7 @@ class SUBTITLE_OT_translate(Operator):
         channel = config.get("subtitle_channel", 2)
         if scene.sequence_editor:
             # Find empty channel
-            for seq in scene.sequence_editor.strips:
+            for seq in scene.sequence_editor.sequences:
                 if seq.channel >= channel:
                     channel = seq.channel + 1
             channel = min(channel, 128)

@@ -13,7 +13,7 @@ def get_selected_strip(context) -> Optional[Any]:
     if not context.scene.sequence_editor:
         return None
 
-    selected = [s for s in context.scene.sequence_editor.strips if s.select]
+    selected = [s for s in context.scene.sequence_editor.sequences if s.select]
     if selected:
         return selected[0]
     return None
@@ -24,7 +24,7 @@ def get_selected_strips(context) -> List[Any]:
     if not context.scene.sequence_editor:
         return []
 
-    return [s for s in context.scene.sequence_editor.strips if s.select]
+    return [s for s in context.scene.sequence_editor.sequences if s.select]
 
 
 def get_strip_filepath(strip) -> Optional[str]:
@@ -69,7 +69,7 @@ def create_text_strip(
     length = max(1, frame_end - frame_start)
 
     # Create text strip
-    strip = scene.sequence_editor.strips.new_effect(
+    strip = scene.sequence_editor.sequences.new_effect(
         name=name,
         type="TEXT",
         channel=channel,
@@ -92,6 +92,10 @@ def refresh_list(context):
     if not context.scene:
         return
 
+    props = getattr(context.scene, "subtitle_editor", None)
+    if not props:
+        return
+
     # Clear current list
     context.scene.text_strip_items.clear()
 
@@ -99,12 +103,13 @@ def refresh_list(context):
         return
 
     # Get the designated subtitle channel from settings
-    props = context.scene.subtitle_editor
     subtitle_channel = props.subtitle_channel
+    speaker_count = max(1, int(getattr(props, "speaker_count", 1)))
+    channels = {subtitle_channel + offset for offset in range(speaker_count)}
 
     # Add only text strips that are on the subtitle channel
-    for strip in context.scene.sequence_editor.strips:
-        if strip.type == "TEXT" and strip.channel == subtitle_channel:
+    for strip in context.scene.sequence_editor.sequences:
+        if strip.type == "TEXT" and strip.channel in channels:
             item = context.scene.text_strip_items.add()
             item.name = strip.name
             item.text = strip.text
@@ -134,7 +139,7 @@ def get_text_strips(scene) -> List[Any]:
     if not scene.sequence_editor:
         return []
 
-    return [s for s in scene.sequence_editor.strips if s.type == "TEXT"]
+    return [s for s in scene.sequence_editor.sequences if s.type == "TEXT"]
 
 
 def on_text_strip_index_update(self, context):
@@ -157,11 +162,11 @@ def on_text_strip_index_update(self, context):
         # This keeps the UI list and Sequencer selection in sync
         if context.scene.sequence_editor:
             # Deselect all
-            for s in context.scene.sequence_editor.strips:
+            for s in context.scene.sequence_editor.sequences:
                 s.select = False
 
             # Select the matching strip
-            for s in context.scene.sequence_editor.strips:
+            for s in context.scene.sequence_editor.sequences:
                 if s.name == item.name:
                     s.select = True
                     context.scene.sequence_editor.active_strip = s

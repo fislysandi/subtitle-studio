@@ -27,7 +27,10 @@ class TranscriptionManager:
     """Manages transcription using Faster Whisper"""
 
     def __init__(
-        self, model_name: str = "base", device: str = "auto", compute_type: str = "default"
+        self,
+        model_name: str = "base",
+        device: str = "auto",
+        compute_type: str = "default",
     ):
         """Initialize transcription manager
 
@@ -70,30 +73,43 @@ class TranscriptionManager:
             # PRE-CHECK: Validate model files exist before attempting to load
             if cache_dir:
                 local_model_path = os.path.join(cache_dir, self.model_name)
-                
+
                 # Check if model directory exists
                 if os.path.exists(local_model_path):
                     bin_path = os.path.join(local_model_path, "model.bin")
                     config_path = os.path.join(local_model_path, "config.json")
-                    
+
                     # Check existence AND size > 1KB/10B
-                    has_bin = os.path.exists(bin_path) and os.path.getsize(bin_path) > 1024
-                    has_config = os.path.exists(config_path) and os.path.getsize(config_path) > 10
-                    
+                    has_bin = (
+                        os.path.exists(bin_path) and os.path.getsize(bin_path) > 1024
+                    )
+                    has_config = (
+                        os.path.exists(config_path)
+                        and os.path.getsize(config_path) > 10
+                    )
+
                     if has_bin and has_config:
                         # Model exists and looks complete - use local path
                         model_path_or_size = local_model_path
-                        download_root = None  # Don't use download_root when path provided
+                        download_root = (
+                            None  # Don't use download_root when path provided
+                        )
                     elif os.path.exists(local_model_path):
                         # Directory exists but files incomplete
                         print(f"Error: Model '{self.model_name}' files are incomplete.")
-                        print(f"Expected: model.bin and config.json in {local_model_path}")
-                        print(f"Please re-download the model using the 'Download Model' button.")
+                        print(
+                            f"Expected: model.bin and config.json in {local_model_path}"
+                        )
+                        print(
+                            f"Please re-download the model using the 'Download Model' button."
+                        )
                         return False
                 else:
                     # Model directory doesn't exist at all
                     print(f"Error: Model '{self.model_name}' not found.")
-                    print(f"Please download the model first using the 'Download Model' button in the addon panel.")
+                    print(
+                        f"Please download the model first using the 'Download Model' button in the addon panel."
+                    )
                     return False
 
             # Auto-detect and adjust compute type for compatibility
@@ -104,7 +120,9 @@ class TranscriptionManager:
             elif compute_type == "float16":
                 # float16 only works efficiently on GPU
                 if self.device == "cpu":
-                    print(f"Warning: float16 not supported on CPU, falling back to int8")
+                    print(
+                        f"Warning: float16 not supported on CPU, falling back to int8"
+                    )
                     compute_type = "int8"
             # int8, float32 work on both CPU and GPU
 
@@ -114,24 +132,29 @@ class TranscriptionManager:
                 compute_type=compute_type,
                 download_root=download_root,
             )
-            
+
             # Update the stored compute type to reflect what was actually used
             self.compute_type = compute_type
             return True
 
         except Exception as e:
             error_msg = str(e)
-            
+
             # Provide user-friendly error messages
             if "float16" in error_msg and "not support" in error_msg:
                 print(f"Error: float16 compute type not supported on {self.device}")
-                print(f"Recommendation: Use 'int8' for CPU or 'float32' for broader compatibility")
-            elif "No such file or directory" in error_msg or "does not appear to have a file named" in error_msg:
+                print(
+                    f"Recommendation: Use 'int8' for CPU or 'float32' for broader compatibility"
+                )
+            elif (
+                "No such file or directory" in error_msg
+                or "does not appear to have a file named" in error_msg
+            ):
                 print(f"Error: Model '{self.model_name}' not found.")
                 print(f"Please download the model using the 'Download Model' button.")
             else:
                 print(f"Error loading model: {e}")
-            
+
             return False
 
     def set_progress_callback(self, callback: Callable[[float, str], None]):
@@ -172,7 +195,7 @@ class TranscriptionManager:
             "word_timestamps": word_timestamps,
             "vad_filter": vad_filter,
         }
-        
+
         if vad_filter and vad_parameters:
             options["vad_parameters"] = vad_parameters
 
@@ -199,7 +222,10 @@ class TranscriptionManager:
 
             # Create segment data
             seg_data = TranscriptionSegment(
-                start=segment.start, end=segment.end, text=segment.text.strip(), words=None
+                start=segment.start,
+                end=segment.end,
+                text=segment.text.strip(),
+                words=None,
             )
 
             # Add word timestamps if available
@@ -216,13 +242,17 @@ class TranscriptionManager:
             # Report progress
             if self._progress_callback and total_duration > 0:
                 progress = min(0.1 + (segment.end / total_duration) * 0.9, 1.0)
-                self._progress_callback(progress, f"Processing segment {segment_count}...")
+                self._progress_callback(
+                    progress, f"Processing segment {segment_count}..."
+                )
 
             yield seg_data
 
         # Complete
         if self._progress_callback:
-            self._progress_callback(1.0, f"Transcription complete ({segment_count} segments)")
+            self._progress_callback(
+                1.0, f"Transcription complete ({segment_count} segments)"
+            )
 
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get audio file duration in seconds"""
@@ -257,7 +287,8 @@ class TranscriptionManager:
             Path to extracted audio file
         """
         if output_path is None:
-            output_path = tempfile.mktemp(suffix=".wav")
+            fd, output_path = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
 
         try:
             # Try ffmpeg first
@@ -293,7 +324,11 @@ class TranscriptionManager:
                 from pydub import AudioSegment
 
                 audio = AudioSegment.from_file(video_path)
-                audio.export(output_path, format="wav", parameters=["-ar", "16000", "-ac", "1"])
+                audio.export(
+                    output_path, format="wav", parameters=["-ar", "16000", "-ac", "1"]
+                )
                 return output_path
             except ImportError:
-                raise RuntimeError("Neither ffmpeg nor pydub available for audio extraction")
+                raise RuntimeError(
+                    "Neither ffmpeg nor pydub available for audio extraction"
+                )

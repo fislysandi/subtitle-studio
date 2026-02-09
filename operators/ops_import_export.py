@@ -29,11 +29,12 @@ class SUBTITLE_OT_import_subtitles(Operator, ImportHelper):
 
             # Create text strips
             scene = context.scene
-            channel = 3
+            channel = scene.subtitle_editor.subtitle_channel
+            fps = scene.render.fps / (scene.render.fps_base or 1.0)
 
             for entry in entries:
-                frame_start = int(entry.start * scene.render.fps)
-                frame_end = int(entry.end * scene.render.fps)
+                frame_start = int(entry.start * fps)
+                frame_end = int(entry.end * fps)
 
                 strip = sequence_utils.create_text_strip(
                     scene,
@@ -95,11 +96,12 @@ class SUBTITLE_OT_export_subtitles(Operator, ExportHelper):
 
             # Convert to entries
             entries = []
+            fps = scene.render.fps / (scene.render.fps_base or 1.0)
             for i, strip in enumerate(strips, 1):
                 entry = SubtitleEntry(
                     index=i,
-                    start=strip.frame_final_start / scene.render.fps,
-                    end=strip.frame_final_end / scene.render.fps,
+                    start=strip.frame_final_start / fps,
+                    end=strip.frame_final_end / fps,
                     text=strip.text,
                 )
                 entries.append(entry)

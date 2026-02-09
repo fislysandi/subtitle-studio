@@ -46,7 +46,7 @@ def _get_unique_strip_name(scene, base_name: str) -> str:
     if not scene.sequence_editor:
         return base_name
 
-    existing_names = {strip.name for strip in scene.sequence_editor.strips}
+    existing_names = {strip.name for strip in scene.sequence_editor.sequences}
     if base_name not in existing_names:
         return base_name
 
@@ -65,7 +65,7 @@ def _select_strip_by_index(context, index: int) -> bool:
     item = scene.text_strip_items[index]
 
     if scene.sequence_editor:
-        for strip in scene.sequence_editor.strips:
+        for strip in scene.sequence_editor.sequences:
             strip.select = strip.name == item.name
             if strip.name == item.name:
                 scene.frame_current = strip.frame_final_start
@@ -305,7 +305,7 @@ class SUBTITLE_OT_add_strip_at_cursor(Operator):
         except AttributeError:
             pass
 
-        for s in scene.sequence_editor.strips:
+        for s in scene.sequence_editor.sequences:
             s.select = False
         strip.select = True
         if scene.sequence_editor:
@@ -351,9 +351,9 @@ class SUBTITLE_OT_remove_selected_strip(Operator):
             return {"CANCELLED"}
 
         removed = False
-        for strip in list(scene.sequence_editor.strips):
+        for strip in list(scene.sequence_editor.sequences):
             if strip.name == item.name and strip.type == "TEXT":
-                scene.sequence_editor.strips.remove(strip)
+                scene.sequence_editor.sequences.remove(strip)
                 removed = True
                 break
 
@@ -400,10 +400,11 @@ class SUBTITLE_OT_update_text(Operator):
 
         # Update actual strip
         if scene.sequence_editor:
-            for strip in scene.sequence_editor.strips:
+            for strip in scene.sequence_editor.sequences:
                 if strip.name == item.name and strip.type == "TEXT":
                     strip.text = new_text
                     break
+        return {"FINISHED"}
 
 
 def _jump_to_selected(context, edge: str):
@@ -415,7 +416,7 @@ def _jump_to_selected(context, edge: str):
     if not scene.sequence_editor:
         return False, "No sequence editor"
 
-    for strip in scene.sequence_editor.strips:
+    for strip in scene.sequence_editor.sequences:
         if strip.name == item.name and strip.type == "TEXT":
             if edge == "END":
                 scene.frame_current = strip.frame_final_end
@@ -589,6 +590,8 @@ class SUBTITLE_OT_adjust_speaker_count(Operator):
         if not props:
             self.report({"WARNING"}, "Subtitle Studio is not registered")
             return {"CANCELLED"}
+        if not scene.sequence_editor:
+            scene.sequence_editor_create()
 
         delta = 1 if self.direction >= 0 else -1
         new_count = max(1, min(3, props.speaker_count + delta))
@@ -620,8 +623,9 @@ class SUBTITLE_OT_adjust_speaker_count(Operator):
             "[Subtitle Studio] update_speaker_tab/update_speaker_channels/refresh_list",
             flush=True,
         )
-        props.update_speaker_tab(context)
-        props.update_speaker_channels(context)
+        props.update_speaker_tab(context, sync_from_channels=False)
+        if props.speaker_warning:
+            self.report({"WARNING"}, props.speaker_warning)
         sequence_utils.refresh_list(context)
         for area in context.screen.areas:
             if area.type == "SEQUENCE_EDITOR":

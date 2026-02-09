@@ -112,7 +112,7 @@ def _sync_speaker_names_handler(depsgraph):
         if not props or not scene.sequence_editor:
             continue
 
-        strips = [s for s in scene.sequence_editor.strips if s.type == "TEXT"]
+        strips = [s for s in scene.sequence_editor.sequences if s.type == "TEXT"]
         channel_state = {s.name: s.channel for s in strips}
         cache = scene.get("_subtitle_channel_cache", {})
 
