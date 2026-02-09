@@ -18,6 +18,11 @@ from .constants import LANGUAGE_ITEMS
 from .utils import file_utils
 
 
+def speaker_items(self, context):
+    names = [self.speaker_name_1, self.speaker_name_2, self.speaker_name_3]
+    return [(str(idx + 1), names[idx], "") for idx in range(self.speaker_count)]
+
+
 class TextStripItem(PropertyGroup):
     """Property group representing a text strip in the sequencer"""
 
@@ -444,6 +449,15 @@ class SubtitleEditorProperties(PropertyGroup):
             return self.speaker_name_3
         return self.speaker_name_1
 
+    def update_speaker_choice(self, context):
+        if getattr(self, "_updating_speaker_choice", False):
+            return
+        try:
+            self.speaker_index = int(self.speaker_choice)
+        except ValueError:
+            self.speaker_index = 1
+        self.update_speaker_tab(context)
+
     def _apply_speaker_prefix(self, text: str, speaker: str) -> str:
         if not self.show_speaker_prefix_in_text:
             _, rest = self._strip_speaker_prefix(text.strip())
@@ -511,6 +525,13 @@ class SubtitleEditorProperties(PropertyGroup):
     def update_speaker_tab(self, context):
         if not context.scene:
             return
+
+        if self.speaker_index > self.speaker_count:
+            self.speaker_index = self.speaker_count
+
+        self._updating_speaker_choice = True
+        self.speaker_choice = str(self.speaker_index)
+        self._updating_speaker_choice = False
 
         label = self._speaker_label()
         selected = []
@@ -876,6 +897,14 @@ class SubtitleEditorProperties(PropertyGroup):
         default=(0.0, 0.0, 0.0),
     )
 
+    speaker_count: IntProperty(
+        name="Speaker Count",
+        description="Number of active speaker slots",
+        default=3,
+        min=1,
+        max=3,
+    )
+
     speaker_index: IntProperty(
         name="Speaker",
         description="Active speaker slot (placeholder)",
@@ -883,6 +912,14 @@ class SubtitleEditorProperties(PropertyGroup):
         min=1,
         max=3,
         update=lambda self, context: self.update_speaker_tab(context),
+    )
+
+    speaker_choice: EnumProperty(
+        name="Speaker",
+        description="Active speaker selection",
+        items=speaker_items,
+        default="1",
+        update=lambda self, context: self.update_speaker_choice(context),
     )
 
     speaker_name_1: StringProperty(
