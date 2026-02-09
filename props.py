@@ -19,8 +19,13 @@ from .utils import file_utils
 
 
 def speaker_items(self, context):
-    names = [self.speaker_name_1, self.speaker_name_2, self.speaker_name_3]
-    return [(str(idx + 1), names[idx], "") for idx in range(self.speaker_count)]
+    count = getattr(self, "speaker_count", 3) or 3
+    names = [
+        getattr(self, "speaker_name_1", "Speaker 1"),
+        getattr(self, "speaker_name_2", "Speaker 2"),
+        getattr(self, "speaker_name_3", "Speaker 3"),
+    ]
+    return [(str(idx + 1), names[idx], "") for idx in range(count)]
 
 
 class TextStripItem(PropertyGroup):
@@ -637,11 +642,11 @@ class SubtitleEditorProperties(PropertyGroup):
             if channel.name in speaker_names:
                 channel.name = f"Channel {index}"
 
-    def update_speaker_channels(self, context):
-        if not context.scene or not context.scene.sequence_editor:
+    def update_speaker_channels_for_scene(self, scene) -> None:
+        if not scene or not scene.sequence_editor:
             return
 
-        self.sync_speaker_names_from_scene(context.scene)
+        self.sync_speaker_names_from_scene(scene)
 
         mapping = {
             self.speaker_name_1: self.subtitle_channel,
@@ -657,10 +662,10 @@ class SubtitleEditorProperties(PropertyGroup):
 
         target_channels = set(mapping.values())
 
-        subtitle_names = {item.name for item in context.scene.text_strip_items}
+        subtitle_names = {item.name for item in scene.text_strip_items}
         warning = ""
 
-        for strip in context.scene.sequence_editor.strips:
+        for strip in scene.sequence_editor.strips:
             if strip.channel in mapping.values():
                 if strip.name not in subtitle_names or strip.type != "TEXT":
                     warning = (
@@ -673,11 +678,11 @@ class SubtitleEditorProperties(PropertyGroup):
 
         strip_by_name = {
             strip.name: strip
-            for strip in context.scene.sequence_editor.strips
+            for strip in scene.sequence_editor.strips
             if strip.type == "TEXT"
         }
 
-        for item in context.scene.text_strip_items:
+        for item in scene.text_strip_items:
             strip = strip_by_name.get(item.name)
             if strip and strip.channel in channel_to_speaker:
                 new_speaker = channel_to_speaker[strip.channel]
@@ -697,25 +702,25 @@ class SubtitleEditorProperties(PropertyGroup):
                     strip.channel = item.channel
                 strip.text = self._apply_speaker_prefix(strip.text, item.speaker)
                 item.text = strip.text
-                idx = context.scene.text_strip_items.find(item.name)
+                idx = scene.text_strip_items.find(item.name)
                 self._update_strip_name(
-                    context.scene,
+                    scene,
                     item,
                     strip.text,
                     (idx + 1 if idx >= 0 else 1),
                     current_name,
                 )
 
-        self._reset_speaker_channel_names(context.scene, target_channels)
-        self._set_channel_name(
-            context.scene, self.subtitle_channel, self.speaker_name_1
-        )
-        self._set_channel_name(
-            context.scene, self.subtitle_channel + 1, self.speaker_name_2
-        )
-        self._set_channel_name(
-            context.scene, self.subtitle_channel + 2, self.speaker_name_3
-        )
+        self._reset_speaker_channel_names(scene, target_channels)
+        self._set_channel_name(scene, self.subtitle_channel, self.speaker_name_1)
+        self._set_channel_name(scene, self.subtitle_channel + 1, self.speaker_name_2)
+        self._set_channel_name(scene, self.subtitle_channel + 2, self.speaker_name_3)
+
+    def update_speaker_channels(self, context):
+        scene = getattr(context, "scene", None)
+        if not scene:
+            return
+        self.update_speaker_channels_for_scene(scene)
 
     # Import/Export settings
     import_format: EnumProperty(
