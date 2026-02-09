@@ -38,6 +38,7 @@
   - jump timeline to cue
   - nudge in/out with step size buttons
 - [ ] Make Trascription & Translation Ui Block Look much better and more intuitive.
+- [ ] Make Subtitle Studio Ui Block Section Look Much Better and more intuitive.
 
 **Acceptance criteria**
 - A new user can install and create subtitles in <5 minutes with minimal confusion.
