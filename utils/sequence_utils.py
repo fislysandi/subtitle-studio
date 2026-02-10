@@ -95,6 +95,11 @@ def create_text_strip(
         length=length,
     )
 
+    # Explicitly set frame position to ensure absolute positioning
+    # This prevents any context-dependent positioning (e.g., from 2D cursor)
+    strip.frame_start = frame_start
+    strip.frame_duration = length
+
     # Set text properties
     strip.text = text
     strip.font_size = 24
