@@ -106,10 +106,42 @@ class SubtitleIO:
 
     @classmethod
     def _load_with_pysubs2(cls, filepath: str) -> List[SubtitleEntry]:
-        """Load using pysubs2 library"""
+        """Load using pysubs2 library with encoding fallback
+
+        Tries multiple encodings to handle subtitle files with various encodings:
+        - utf-8: Standard encoding
+        - utf-8-sig: UTF-8 with BOM
+        - latin-1: ISO-8859-1 (Western European)
+        - cp1252: Windows-1252
+
+        Falls back to replacement characters if all encodings fail.
+        """
         import pysubs2
 
-        subs = pysubs2.load(filepath)
+        # Try common encodings in order of likelihood
+        encodings = ["utf-8", "utf-8-sig", "latin-1", "cp1252"]
+        content = None
+
+        for encoding in encodings:
+            try:
+                with open(filepath, "r", encoding=encoding) as f:
+                    content = f.read()
+                # Successfully read file, exit the loop
+                break
+            except UnicodeDecodeError:
+                # This encoding failed, try the next one
+                continue
+            except Exception:
+                # Other errors (file not found, etc.), re-raise
+                raise
+
+        # If all encodings failed, use replacement characters as last resort
+        if content is None:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+
+        # Parse the content using pysubs2 from_string
+        subs = pysubs2.SSAFile.from_string(content)
         entries = []
 
         for line in subs:
@@ -124,7 +156,9 @@ class SubtitleIO:
         return entries
 
     @classmethod
-    def _save_with_pysubs2(cls, filepath: str, entries: List[SubtitleEntry], format: str) -> None:
+    def _save_with_pysubs2(
+        cls, filepath: str, entries: List[SubtitleEntry], format: str
+    ) -> None:
         """Save using pysubs2 library"""
         import pysubs2
 
@@ -144,11 +178,34 @@ class SubtitleIO:
 
     @classmethod
     def _load_srt(cls, filepath: str) -> List[SubtitleEntry]:
-        """Parse SRT file manually"""
+        """Parse SRT file manually with encoding fallback
+
+        Tries multiple encodings to handle subtitle files with various encodings.
+        Falls back to replacement characters if all encodings fail.
+        """
         entries = []
 
-        with open(filepath, "r", encoding="utf-8-sig") as f:
-            content = f.read()
+        # Try common encodings in order of likelihood
+        encodings = ["utf-8-sig", "utf-8", "latin-1", "cp1252"]
+        content = None
+
+        for encoding in encodings:
+            try:
+                with open(filepath, "r", encoding=encoding) as f:
+                    content = f.read()
+                # Successfully read file, exit the loop
+                break
+            except UnicodeDecodeError:
+                # This encoding failed, try the next one
+                continue
+            except Exception:
+                # Other errors (file not found, etc.), re-raise
+                raise
+
+        # If all encodings failed, use replacement characters as last resort
+        if content is None:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
 
         # Split by double newline (subtitle blocks)
         blocks = content.strip().split("\n\n")
@@ -193,11 +250,34 @@ class SubtitleIO:
 
     @classmethod
     def _load_vtt(cls, filepath: str) -> List[SubtitleEntry]:
-        """Parse WebVTT file manually"""
+        """Parse WebVTT file manually with encoding fallback
+
+        Tries multiple encodings to handle subtitle files with various encodings.
+        Falls back to replacement characters if all encodings fail.
+        """
         entries = []
 
-        with open(filepath, "r", encoding="utf-8-sig") as f:
-            lines = f.readlines()
+        # Try common encodings in order of likelihood
+        encodings = ["utf-8-sig", "utf-8", "latin-1", "cp1252"]
+        lines = None
+
+        for encoding in encodings:
+            try:
+                with open(filepath, "r", encoding=encoding) as f:
+                    lines = f.readlines()
+                # Successfully read file, exit the loop
+                break
+            except UnicodeDecodeError:
+                # This encoding failed, try the next one
+                continue
+            except Exception:
+                # Other errors (file not found, etc.), re-raise
+                raise
+
+        # If all encodings failed, use replacement characters as last resort
+        if lines is None:
+            with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
 
         # Skip header
         i = 0
@@ -217,7 +297,9 @@ class SubtitleIO:
             if "-->" in line:
                 start_str, end_str = line.split("-->")
                 start = cls._parse_timecode(start_str.strip())
-                end = cls._parse_timecode(end_str.strip().split()[0])  # Remove positioning
+                end = cls._parse_timecode(
+                    end_str.strip().split()[0]
+                )  # Remove positioning
 
                 # Collect text lines
                 text_lines = []
