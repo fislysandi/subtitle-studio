@@ -12,7 +12,7 @@ This guide captures the local iteration, testing, and packaging workflow for Sub
 
 ## Local Workflow
 
-1. Clone this repository, then install the ZIP for quick verification or drop the `subtitle_editor/` package into Blender's `scripts/addons` path for live iteration.
+1. Clone this repository, then install the ZIP for quick verification or drop the `subtitle_studio/` package into Blender's `scripts/addons` path for live iteration.
 2. Enable `Subtitle Studio` under `Edit → Preferences → Add-ons` and confirm the VSE sidebar panel appears.
 3. Run `uv run test subtitle_editor` to exercise modal operators, threading logic, and Faster Whisper pipelines (thread-safe UI updates are highlighted in `context/project-intelligence/technical-domain.md`).
 

@@ -9,18 +9,18 @@
 
 ---
 
-## Milestone 0 — Rename + Polish Baseline (Brand/Repo Hygiene)
-**Outcome:** Project is consistently named “Subtitle Studio” everywhere, and the repo looks intentional.
+## Milestone 0 — Rename + Polish Baseline (Brand/Repo Hygiene) ✅ COMPLETE
+**Outcome:** Project is consistently named "Subtitle Studio" everywhere, and the repo looks intentional.
 
-- [ ] Rename addon display name to **Subtitle Studio**
-- [ ] Add me as the author "Fislysandi"
-- [ ] Credit the original repo for the idea "https://github.com/tin2tin/Subtitle_Editor"
-- [ ] Update `bl_info` (name, description, versioning, links)
-- [ ] Update README: install steps, quickstart, troubleshooting
-- [ ] Ensure module/package naming is consistent (keep Python package name stable if needed; rename only UI-facing strings first)
-- [ ] Add `ROADMAP.md` + `CHANGELOG.md` + `LICENSE` verification
+- [x] Rename addon display name to **Subtitle Studio**
+- [x] Add me as the author "Fislysandi"
+- [x] Credit the original repo for the idea "https://github.com/tin2tin/Subtitle_Editor"
+- [x] Update `bl_info` (name, description, versioning, links)
+- [x] Update README: install steps, quickstart, troubleshooting
+- [x] Ensure module/package naming is consistent (internal identifier updated to `subtitle_studio`)
+- [x] Add `ROADMAP.md` + `CHANGELOG.md` + `LICENSE` verification
 - [ ] Add screenshots/gifs for the README (optional but recommended)
-- [ ] Add `docs/dev.md`: dev workflow (how to run, how to test in Blender)
+- [x] Add `docs/dev.md`: dev workflow (how to run, how to test in Blender)
 
 **Acceptance criteria**
 - Blender Add-ons list shows “Subtitle Studio”

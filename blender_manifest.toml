@@ -1,6 +1,6 @@
 schema_version = "1.0.0"
 
-id = "subtitle_editor"
+id = "subtitle_studio"
 version = "1.0.0"
 name = "Subtitle Studio"
 tagline = "AI-powered subtitle transcription and editing for Blender VSE"
