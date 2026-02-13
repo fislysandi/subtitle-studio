@@ -279,6 +279,8 @@ class SUBTITLE_OT_add_strip_at_cursor(Operator):
                 strip.align_y = "CENTER"
             elif props.v_align == "BOTTOM":
                 strip.align_y = "BOTTOM"
+            elif props.v_align == "CUSTOM":
+                strip.location = (0.5, 0.5)
         except AttributeError:
             pass
 
@@ -640,7 +642,8 @@ class SUBTITLE_OT_apply_style(Operator):
                         strip.align_y = "CENTER"
                     elif props.v_align == "BOTTOM":
                         strip.align_y = "BOTTOM"
-                    # CUSTOM leaves strip alignment/position unchanged
+                    elif props.v_align == "CUSTOM":
+                        strip.location = (0.5, 0.5)
                 except AttributeError:
                     pass
 

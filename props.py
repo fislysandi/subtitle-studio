@@ -871,6 +871,11 @@ class SubtitleEditorProperties(PropertyGroup):
                     strip.align_y = self.v_align
                 except AttributeError:
                     pass
+            else:
+                try:
+                    strip.location = (0.5, 0.5)
+                except AttributeError:
+                    pass
 
             try:
                 strip.wrap_width = self.wrap_width
