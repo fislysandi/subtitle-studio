@@ -375,7 +375,20 @@ def _selection_signature(scene):
     selected_names = tuple(
         sorted(s.name for s in sequences if s.type == "TEXT" and s.select)
     )
-    return active_name, selected_names
+
+    resolution = resolve_edit_target_for_scene(scene, allow_index_fallback=False)
+    strip = resolution.strip
+    if strip is None:
+        return active_name, selected_names, "", "", -1, -1
+
+    return (
+        active_name,
+        selected_names,
+        strip.name,
+        strip.text,
+        int(strip.frame_final_start),
+        int(strip.frame_final_end),
+    )
 
 
 def _sync_edit_state_from_scene(scene) -> None:

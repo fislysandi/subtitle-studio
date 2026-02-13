@@ -387,7 +387,7 @@ class SubtitleEditorProperties(PropertyGroup):
             return
 
         resolution = sequence_utils.resolve_edit_target_for_scene(
-            scene, allow_index_fallback=True
+            scene, allow_index_fallback=False
         )
         target_strip = resolution.strip
         if not target_strip:
