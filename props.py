@@ -265,6 +265,7 @@ class SubtitleEditorProperties(PropertyGroup):
             ("TOP", "Top", "Align to top"),
             ("CENTER", "Center", "Align to center"),
             ("BOTTOM", "Bottom", "Align to bottom"),
+            ("CUSTOM", "Custom", "Do not force alignment; keep manual positioning"),
         ],
         default="BOTTOM",
         update=lambda self, context: self._apply_live_style(context),
@@ -667,6 +668,7 @@ class SubtitleEditorProperties(PropertyGroup):
             ("TOP", "Top", "Align to top"),
             ("CENTER", "Center", "Align to center"),
             ("BOTTOM", "Bottom", "Align to bottom"),
+            ("CUSTOM", "Custom", "Do not force alignment"),
         ],
         default="BOTTOM",
     )
@@ -721,6 +723,7 @@ class SubtitleEditorProperties(PropertyGroup):
             ("TOP", "Top", "Align to top"),
             ("CENTER", "Center", "Align to center"),
             ("BOTTOM", "Bottom", "Align to bottom"),
+            ("CUSTOM", "Custom", "Do not force alignment"),
         ],
         default="BOTTOM",
     )
@@ -775,6 +778,7 @@ class SubtitleEditorProperties(PropertyGroup):
             ("TOP", "Top", "Align to top"),
             ("CENTER", "Center", "Align to center"),
             ("BOTTOM", "Bottom", "Align to bottom"),
+            ("CUSTOM", "Custom", "Do not force alignment"),
         ],
         default="BOTTOM",
     )
@@ -862,10 +866,11 @@ class SubtitleEditorProperties(PropertyGroup):
             except AttributeError:
                 pass
 
-            try:
-                strip.align_y = self.v_align
-            except AttributeError:
-                pass
+            if self.v_align != "CUSTOM":
+                try:
+                    strip.align_y = self.v_align
+                except AttributeError:
+                    pass
 
             try:
                 strip.wrap_width = self.wrap_width

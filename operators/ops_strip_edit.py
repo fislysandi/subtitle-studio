@@ -640,6 +640,7 @@ class SUBTITLE_OT_apply_style(Operator):
                         strip.align_y = "CENTER"
                     elif props.v_align == "BOTTOM":
                         strip.align_y = "BOTTOM"
+                    # CUSTOM leaves strip alignment/position unchanged
                 except AttributeError:
                     pass
 

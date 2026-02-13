@@ -433,7 +433,10 @@ def _sync_edit_state_from_scene(scene) -> None:
                     float(strip.shadow_color[2]),
                 )
             if hasattr(strip, "align_y"):
-                props["v_align"] = str(strip.align_y)
+                align_value = str(strip.align_y)
+                if props.get("v_align", "") != "CUSTOM":
+                    if align_value in {"TOP", "CENTER", "BOTTOM", "CUSTOM"}:
+                        props["v_align"] = align_value
             if hasattr(strip, "wrap_width"):
                 props["wrap_width"] = float(strip.wrap_width)
         finally:
