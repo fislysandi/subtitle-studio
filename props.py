@@ -168,16 +168,16 @@ class SubtitleEditorProperties(PropertyGroup):
             ("distil-large-v3", "Distil-Large-v3", "Distilled large-v3 (~756 MB)"),
             (
                 "distil-large-v3.5",
-                "Distil-Large-v3.5 — Multilingual (~756M)",
+                "Distil-Large-v3.5",
                 "Distilled v3.5",
             ),
             # Turbo Models (Fast & Accurate)
             (
                 "large-v3-turbo",
-                "Large-v3-Turbo — Multilingual (~809M)",
+                "Large-v3-Turbo",
                 "Fast with great accuracy",
             ),
-            ("turbo", "Turbo — Multilingual (~809M)", "Alias for large-v3-turbo"),
+            ("turbo", "Turbo", "Alias for large-v3-turbo"),
         ],
         default="base",
     )
