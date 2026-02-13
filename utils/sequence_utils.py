@@ -20,14 +20,25 @@ def _get_sequence_collection(scene):
 
 
 def get_selected_strip(context) -> Optional[Any]:
-    """Get the currently selected strip in the sequencer"""
+    """Get selected TEXT strip, preferring active strip for determinism."""
     sequences = _get_sequence_collection(context.scene)
     if not sequences:
         return None
 
-    selected = [s for s in sequences if s.select]
-    if selected:
-        return selected[0]
+    active = None
+    if context.scene.sequence_editor:
+        active = getattr(context.scene.sequence_editor, "active_strip", None)
+
+    if active and getattr(active, "type", "") == "TEXT" and active.select:
+        return active
+
+    selected_text = [s for s in sequences if s.select and s.type == "TEXT"]
+    if len(selected_text) == 1:
+        return selected_text[0]
+
+    if selected_text and active and getattr(active, "type", "") == "TEXT":
+        return active
+
     return None
 
 

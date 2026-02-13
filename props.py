@@ -108,22 +108,38 @@ class TextStripItem(PropertyGroup):
         start = target_strip.frame_final_start
         end = target_strip.frame_final_end
 
+        def _try_set_end(strip, new_end: int) -> None:
+            """Best-effort end-frame update across Blender strip variants."""
+            for attr in ("frame_final_end", "frame_end"):
+                if hasattr(strip, attr):
+                    try:
+                        setattr(strip, attr, new_end)
+                        return
+                    except Exception:
+                        continue
+
         if source == "start":
             new_start = int(self.frame_start)
             new_start = min(new_start, end - 1)
             if prev_end is not None:
                 new_start = max(new_start, prev_end)
             if new_start != start:
-                target_strip.frame_start = new_start
-                target_strip.frame_duration = max(1, end - new_start)
+                try:
+                    target_strip.frame_start = new_start
+                except Exception:
+                    pass
+                _try_set_end(target_strip, end)
         elif source == "end":
             new_end = int(self.frame_end)
             new_end = max(new_end, start + 1)
             if next_start is not None:
                 new_end = min(new_end, next_start)
             if new_end != end:
-                target_strip.frame_start = start
-                target_strip.frame_duration = max(1, new_end - start)
+                try:
+                    target_strip.frame_start = start
+                except Exception:
+                    pass
+                _try_set_end(target_strip, new_end)
         else:
             return
 
@@ -378,7 +394,25 @@ class SubtitleEditorProperties(PropertyGroup):
         target_name = None
         target_strip = None
 
-        if 0 <= index < len(items):
+        if sequences:
+            active_strip = getattr(scene.sequence_editor, "active_strip", None)
+            if (
+                active_strip
+                and getattr(active_strip, "type", "") == "TEXT"
+                and getattr(active_strip, "select", False)
+            ):
+                target_strip = active_strip
+
+            if target_strip is None:
+                selected_text = [
+                    s
+                    for s in sequences
+                    if getattr(s, "select", False) and s.type == "TEXT"
+                ]
+                if len(selected_text) == 1:
+                    target_strip = selected_text[0]
+
+        if target_strip is None and 0 <= index < len(items):
             item = items[index]
             item.text = self.current_text
             target_name = item.name
@@ -390,15 +424,9 @@ class SubtitleEditorProperties(PropertyGroup):
                     break
 
         if sequences and target_strip is None:
-            selected_text_strips = [
-                s for s in sequences if getattr(s, "select", False) and s.type == "TEXT"
-            ]
-            if selected_text_strips:
-                target_strip = selected_text_strips[0]
-            else:
-                active_strip = getattr(scene.sequence_editor, "active_strip", None)
-                if active_strip and getattr(active_strip, "type", "") == "TEXT":
-                    target_strip = active_strip
+            active_strip = getattr(scene.sequence_editor, "active_strip", None)
+            if active_strip and getattr(active_strip, "type", "") == "TEXT":
+                target_strip = active_strip
 
         if target_strip and hasattr(target_strip, "text"):
             target_strip.text = self.current_text
