@@ -21,10 +21,13 @@ class SEQUENCER_UL_List(UIList):
             fps = scene.render.fps / (scene.render.fps_base or 1.0)
 
         frame = max(0, int(getattr(item, "frame_start", 0)))
-        total_seconds = int(frame / fps) if fps > 0 else 0
+        fps_int = max(1, int(round(fps)))
+
+        total_seconds = frame // fps_int
         minutes = total_seconds // 60
         seconds = total_seconds % 60
-        prefix = f"{minutes:02d}:{seconds:02d}"
+        frame_part = frame % fps_int
+        prefix = f"{minutes:02d}:{seconds:02d}:{frame_part:02d}"
 
         text = getattr(item, "text", "")
         layout.label(text=f"{prefix}  {text}")
