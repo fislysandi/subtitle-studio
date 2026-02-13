@@ -86,12 +86,20 @@ class SUBTITLE_OT_export_subtitles(Operator, ExportHelper):
 
     def execute(self, context):
         try:
-            # Get all text strips
+            # Get text strips on configured subtitle channel
             scene = context.scene
-            strips = sequence_utils.get_text_strips(scene)
+            subtitle_channel = scene.subtitle_editor.subtitle_channel
+            strips = [
+                strip
+                for strip in sequence_utils.get_text_strips(scene)
+                if strip.channel == subtitle_channel
+            ]
 
             if not strips:
-                self.report({"WARNING"}, "No text strips to export")
+                self.report(
+                    {"WARNING"},
+                    f"No subtitle text strips found on channel {subtitle_channel}",
+                )
                 return {"CANCELLED"}
 
             # Convert to entries
