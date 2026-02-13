@@ -224,7 +224,7 @@ class SEQUENCER_PT_whisper_panel(Panel):
             # Install/Verify button
             row = box.row()
             row.operator(
-                "subtitle.install_dependencies", text="Install/Verify Dependencies"
+                "subtitle.download_dependencies", text="Install/Verify Dependencies"
             )
 
             # Show install status if installing
