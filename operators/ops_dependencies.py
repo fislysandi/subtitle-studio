@@ -5,7 +5,6 @@ Handles checking and installing dependencies like faster-whisper, torch, etc.
 """
 
 import bpy
-import subprocess
 import sys
 from bpy.types import Operator
 from ..core.dependency_manager import DependencyManager
@@ -352,7 +351,7 @@ class SUBTITLE_OT_install_pytorch(Operator):
             )
 
             # Run command (output goes to system console)
-            result = subprocess.run(cmd, check=False)
+            result = DependencyManager.run_install_command(cmd, check=False)
 
             if result.returncode != 0:
                 _schedule_scene_update(
@@ -394,7 +393,10 @@ class SUBTITLE_OT_install_pytorch(Operator):
                 )
 
                 print(f"Running command: {' '.join(runtime_cmd)}")
-                runtime_result = subprocess.run(runtime_cmd, check=False)
+                runtime_result = DependencyManager.run_install_command(
+                    runtime_cmd,
+                    check=False,
+                )
 
                 if runtime_result.returncode != 0:
                     _schedule_scene_update(

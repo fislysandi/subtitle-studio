@@ -8,7 +8,6 @@ Uses modal operator pattern with background threading.
 import bpy
 import threading
 import queue
-import subprocess
 from typing import Optional, Dict, Any
 from bpy.types import Operator
 from ..core.dependency_manager import DependencyManager
@@ -265,7 +264,7 @@ class SUBTITLE_OT_download_dependencies(Operator):
                     state.mark_complete(success=False, error=str(e))
                     return
 
-                result = subprocess.run(
+                result = DependencyManager.run_install_command(
                     cmd, capture_output=True, text=True, check=False
                 )
 

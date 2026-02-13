@@ -3,10 +3,45 @@ import sys
 import subprocess
 import shutil
 import platform
+import urllib.request
 from pathlib import Path
 
 
 class DependencyManager:
+    @staticmethod
+    def get_proxy_env():
+        """Return process env with system proxy values normalized."""
+        env = os.environ.copy()
+        proxies = urllib.request.getproxies()
+
+        proxy_key_map = {
+            "http": "HTTP_PROXY",
+            "https": "HTTPS_PROXY",
+            "ftp": "FTP_PROXY",
+            "no": "NO_PROXY",
+        }
+
+        for proxy_key, env_key in proxy_key_map.items():
+            value = (
+                proxies.get(proxy_key) or env.get(env_key) or env.get(env_key.lower())
+            )
+            if value:
+                env[env_key] = value
+                env[env_key.lower()] = value
+
+        return env
+
+    @staticmethod
+    def run_install_command(cmd, check=False, capture_output=False, text=False):
+        """Run install command with inherited system proxy settings."""
+        return subprocess.run(
+            cmd,
+            check=check,
+            capture_output=capture_output,
+            text=text,
+            env=DependencyManager.get_proxy_env(),
+        )
+
     @staticmethod
     def get_uv_path():
         """
@@ -61,7 +96,7 @@ class DependencyManager:
         print("[Subtitle Studio] Bootstrapping uv...")
         try:
             # Install uv using standard pip
-            subprocess.run(
+            DependencyManager.run_install_command(
                 [sys.executable, "-m", "pip", "install", "uv"],
                 check=True,
                 capture_output=False,
@@ -71,7 +106,7 @@ class DependencyManager:
             try:
                 # Fallback to --user
                 print("[Subtitle Studio] Standard install failed, trying --user...")
-                subprocess.run(
+                DependencyManager.run_install_command(
                     [sys.executable, "-m", "pip", "install", "--user", "uv"],
                     check=True,
                     capture_output=False,
