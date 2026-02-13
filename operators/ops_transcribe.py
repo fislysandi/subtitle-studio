@@ -6,6 +6,7 @@ import bpy
 import threading
 import queue
 import os
+import tempfile
 from types import SimpleNamespace
 from typing import Dict, Any, Optional, List
 from bpy.types import Operator
@@ -298,30 +299,40 @@ class _BaseTranscribeOperator(Operator):
             audio_path = filepath
             temp_audio_path = None
 
-            if not filepath.lower().endswith((".wav", ".mp3", ".flac", ".m4a")):
-                progress_callback(0.0, "Extracting audio...")
-                temp_audio_path = file_utils.get_temp_filepath("audio_extract.wav")
-                audio_path = tm.extract_audio(filepath, temp_audio_path)
+            try:
+                if not filepath.lower().endswith((".wav", ".mp3", ".flac", ".m4a")):
+                    progress_callback(0.0, "Extracting audio...")
+                    fd, temp_audio_path = tempfile.mkstemp(
+                        suffix=".wav",
+                        prefix="subtitle_extract_",
+                    )
+                    os.close(fd)
+                    audio_path = tm.extract_audio(filepath, temp_audio_path)
 
-            check_cancel()
-
-            segments = []
-            for segment in tm.transcribe(
-                audio_path,
-                language=config["language"] if config["language"] != "auto" else None,
-                translate=config["translate"],
-                word_timestamps=config["word_timestamps"],
-                vad_filter=config["vad_filter"],
-                vad_parameters=config["vad_parameters"],
-            ):
                 check_cancel()
-                segments.append(segment)
 
-            if temp_audio_path and os.path.exists(temp_audio_path):
-                os.remove(temp_audio_path)
+                segments = []
+                for segment in tm.transcribe(
+                    audio_path,
+                    language=config["language"]
+                    if config["language"] != "auto"
+                    else None,
+                    translate=config["translate"],
+                    word_timestamps=config["word_timestamps"],
+                    vad_filter=config["vad_filter"],
+                    vad_parameters=config["vad_parameters"],
+                ):
+                    check_cancel()
+                    segments.append(segment)
 
-            check_cancel()
-            out_queue.put({"type": "complete", "segments": segments})
+                check_cancel()
+                out_queue.put({"type": "complete", "segments": segments})
+            finally:
+                if temp_audio_path and os.path.exists(temp_audio_path):
+                    try:
+                        os.remove(temp_audio_path)
+                    except OSError:
+                        pass
         except _WorkerCancelled:
             pass
         except Exception as e:
