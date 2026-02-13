@@ -674,7 +674,6 @@ class SUBTITLE_OT_copy_style_from_active(Operator):
         "wrap_width",
         "align_x",
         "align_y",
-        "location",
     )
 
     def execute(self, context):
