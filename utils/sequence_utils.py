@@ -177,3 +177,48 @@ def on_text_strip_index_update(self, context):
                     if context.scene.sequence_editor:
                         context.scene.sequence_editor.active_strip = s
                     break
+
+
+def sync_list_selection_from_sequencer(context) -> bool:
+    """Sync panel list selection from currently selected TEXT strip."""
+    scene = getattr(context, "scene", None)
+    if not scene:
+        return False
+
+    props = getattr(scene, "subtitle_editor", None)
+    if not props:
+        return False
+
+    selected = get_selected_strip(context)
+    if not selected or getattr(selected, "type", "") != "TEXT":
+        return False
+
+    items = scene.text_strip_items
+
+    def _find_index() -> int:
+        for i, item in enumerate(items):
+            if item.name == selected.name:
+                return i
+        return -1
+
+    match_index = _find_index()
+    if match_index < 0:
+        refresh_list(context)
+        items = scene.text_strip_items
+        match_index = _find_index()
+
+    if match_index < 0:
+        return False
+
+    if scene.text_strip_items_index != match_index:
+        scene.text_strip_items_index = match_index
+
+    # Keep inline editor text in sync without triggering write-back loop.
+    if props.current_text != selected.text:
+        props._updating_text = True
+        try:
+            props.current_text = selected.text
+        finally:
+            props._updating_text = False
+
+    return True

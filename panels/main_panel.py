@@ -5,6 +5,7 @@ Simplified version matching upstream layout but using existing operators
 
 import bpy
 from bpy.types import Panel
+from ..utils import sequence_utils
 
 
 class SEQUENCER_PT_panel(Panel):
@@ -19,6 +20,7 @@ class SEQUENCER_PT_panel(Panel):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
+        sequence_utils.sync_list_selection_from_sequencer(context)
         if not getattr(scene, "subtitle_editor", None):
             box = layout.box()
             box.alert = True
