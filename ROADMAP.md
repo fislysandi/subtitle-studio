@@ -121,6 +121,13 @@
 **Acceptance criteria**
 - Downloading a large file shows smooth status-bar progress and UI remains responsive.
 
+**Manual verification checklist (Milestone 5)**
+- [ ] Slow network: start model download on throttled connection and confirm progress percentage increases smoothly without UI freeze.
+- [ ] Cancel path: cancel mid-download and confirm status changes to cancelled, progress resets cleanly, and Blender remains responsive.
+- [ ] Retry path: start same model download after cancel/error and confirm progress starts cleanly without stale percentage/message state.
+- [ ] Completion path: let download finish and confirm final state reaches 100%, shows success message, and next download starts from a clean state.
+- [ ] Status consistency: compare panel slider percentage, status text percentage, and Blender status-bar progress for agreement during active download.
+
 ---
 
 ## Milestone 6 — Architecture for TTS Voicing (Design + Foundations)
