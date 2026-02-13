@@ -81,7 +81,7 @@ class TextStripItem(PropertyGroup):
             return
 
         target_strip = None
-        for strip in scene.sequence_editor.sequences:
+        for strip in scene.sequence_editor.strips:
             if strip.name == self.name and strip.type == "TEXT":
                 target_strip = strip
                 break
@@ -93,7 +93,7 @@ class TextStripItem(PropertyGroup):
         prev_end = None
         next_start = None
 
-        for strip in scene.sequence_editor.sequences:
+        for strip in scene.sequence_editor.strips:
             if strip.type != "TEXT" or strip == target_strip:
                 continue
             if strip.channel != channel:

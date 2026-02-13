@@ -481,7 +481,7 @@ class SUBTITLE_OT_translate(_BaseTranscribeOperator):
         channel = config.get("subtitle_channel", 2)
         font_size = config.get("subtitle_font_size", 24)
         if scene.sequence_editor:
-            for seq in scene.sequence_editor.sequences:
+            for seq in scene.sequence_editor.strips:
                 if seq.channel >= channel:
                     channel = seq.channel + 1
             channel = min(channel, 128)

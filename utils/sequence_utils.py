@@ -12,7 +12,7 @@ def _get_sequence_collection(scene):
     if not scene.sequence_editor:
         return None
 
-    return scene.sequence_editor.sequences
+    return scene.sequence_editor.strips
 
 
 def get_selected_strip(context) -> Optional[Any]:
