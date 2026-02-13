@@ -60,7 +60,13 @@ def get_strip_filepath(strip) -> Optional[str]:
 
 
 def create_text_strip(
-    scene, name: str, text: str, frame_start: int, frame_end: int, channel: int = 3
+    scene,
+    name: str,
+    text: str,
+    frame_start: int,
+    frame_end: int,
+    channel: int = 3,
+    font_size: int = 24,
 ) -> Optional[Any]:
     """Create a text strip in the sequencer
 
@@ -97,7 +103,7 @@ def create_text_strip(
 
     # Set text properties
     strip.text = text
-    strip.font_size = 24
+    strip.font_size = font_size
     strip.location = (0.5, 0.1)  # Center bottom
     strip.use_shadow = True
     strip.shadow_color = (0, 0, 0, 1)  # RGBA - Blender 5.0 requires 4 values

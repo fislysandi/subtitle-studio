@@ -9,7 +9,7 @@ import os
 import tempfile
 import wave
 from pathlib import Path
-from typing import Iterator, List, Dict, Optional, Callable
+from typing import Iterator, List, Dict, Optional, Callable, Any
 from dataclasses import dataclass
 
 
@@ -170,6 +170,7 @@ class TranscriptionManager:
         audio_path: str,
         language: Optional[str] = None,
         translate: bool = False,
+        beam_size: int = 5,
         word_timestamps: bool = False,
         vad_filter: bool = True,
         vad_parameters: Optional[Dict] = None,
@@ -191,10 +192,13 @@ class TranscriptionManager:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
         # Set up options
-        options = {
+        options: Dict[str, Any] = {
             "word_timestamps": word_timestamps,
             "vad_filter": vad_filter,
         }
+
+        if beam_size and beam_size > 0:
+            options["beam_size"] = beam_size
 
         if vad_filter and vad_parameters:
             options["vad_parameters"] = vad_parameters

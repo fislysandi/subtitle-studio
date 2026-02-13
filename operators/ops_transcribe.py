@@ -124,6 +124,7 @@ class _BaseTranscribeOperator(Operator):
             "device": props.device,
             "language": props.language,
             "translate": translate,
+            "beam_size": props.beam_size,
             "word_timestamps": props.word_timestamps,
             "vad_filter": props.vad_filter,
             "vad_parameters": {
@@ -133,6 +134,8 @@ class _BaseTranscribeOperator(Operator):
                 "speech_pad_ms": props.speech_pad_ms,
             },
             "subtitle_channel": props.subtitle_channel,
+            "subtitle_font_size": props.subtitle_font_size,
+            "max_words_per_strip": props.max_words_per_strip,
             "render_fps": scene.render.fps / (scene.render.fps_base or 1.0),
             "compute_type": props.compute_type,
             "filepath": filepath,
@@ -196,8 +199,12 @@ class _BaseTranscribeOperator(Operator):
             props.progress_text = "Transcription cancelled"
             self.report({"WARNING"}, "Transcription cancelled")
         elif self._success and scene and self._segments is not None:
-            self._create_strips(scene, self._segments, self._config or {})
-            count = len(self._segments)
+            segments = self._split_segments_for_display(
+                self._segments,
+                self._config or {},
+            )
+            self._create_strips(scene, segments, self._config or {})
+            count = len(segments)
             props.progress_text = self._success_message(count)
             self.report({"INFO"}, props.progress_text)
         else:
@@ -246,6 +253,67 @@ class _BaseTranscribeOperator(Operator):
 
     def _refresh_list(self, scene):
         sequence_utils.refresh_list(SimpleNamespace(scene=scene))
+
+    def _split_segments_for_display(
+        self,
+        segments: List[transcriber.TranscriptionSegment],
+        config: Dict[str, Any],
+    ) -> List[transcriber.TranscriptionSegment]:
+        max_words = int(config.get("max_words_per_strip", 0) or 0)
+        if max_words <= 0:
+            return segments
+
+        output: List[transcriber.TranscriptionSegment] = []
+        for seg in segments:
+            words = seg.text.split()
+            if len(words) <= max_words:
+                output.append(seg)
+                continue
+
+            if seg.words:
+                for i in range(0, len(seg.words), max_words):
+                    chunk_words = seg.words[i : i + max_words]
+                    if not chunk_words:
+                        continue
+                    text = " ".join(
+                        w.get("word", "").strip() for w in chunk_words
+                    ).strip()
+                    if not text:
+                        continue
+                    output.append(
+                        transcriber.TranscriptionSegment(
+                            start=float(chunk_words[0].get("start", seg.start)),
+                            end=float(chunk_words[-1].get("end", seg.end)),
+                            text=text,
+                            words=chunk_words,
+                        )
+                    )
+                continue
+
+            total_words = len(words)
+            if total_words == 0:
+                output.append(seg)
+                continue
+
+            duration = max(seg.end - seg.start, 0.001)
+            sec_per_word = duration / total_words
+            for i in range(0, total_words, max_words):
+                chunk_words = words[i : i + max_words]
+                chunk_start = seg.start + (i * sec_per_word)
+                if i + len(chunk_words) >= total_words:
+                    chunk_end = seg.end
+                else:
+                    chunk_end = seg.start + ((i + len(chunk_words)) * sec_per_word)
+                output.append(
+                    transcriber.TranscriptionSegment(
+                        start=chunk_start,
+                        end=chunk_end,
+                        text=" ".join(chunk_words),
+                        words=None,
+                    )
+                )
+
+        return output
 
     def _transcribe_worker(
         self,
@@ -318,6 +386,7 @@ class _BaseTranscribeOperator(Operator):
                     if config["language"] != "auto"
                     else None,
                     translate=config["translate"],
+                    beam_size=config["beam_size"],
                     word_timestamps=config["word_timestamps"],
                     vad_filter=config["vad_filter"],
                     vad_parameters=config["vad_parameters"],
@@ -367,6 +436,7 @@ class SUBTITLE_OT_transcribe(_BaseTranscribeOperator):
 
     def _create_strips(self, scene, segments, config) -> None:
         channel = config.get("subtitle_channel", 3)
+        font_size = config.get("subtitle_font_size", 24)
         render_fps = config["render_fps"]
 
         for i, seg in enumerate(segments):
@@ -380,6 +450,7 @@ class SUBTITLE_OT_transcribe(_BaseTranscribeOperator):
                 frame_start=frame_start,
                 frame_end=frame_end,
                 channel=channel,
+                font_size=font_size,
             )
 
             if strip:
@@ -408,6 +479,7 @@ class SUBTITLE_OT_translate(_BaseTranscribeOperator):
 
     def _create_strips(self, scene, segments, config) -> None:
         channel = config.get("subtitle_channel", 2)
+        font_size = config.get("subtitle_font_size", 24)
         if scene.sequence_editor:
             for seq in scene.sequence_editor.sequences:
                 if seq.channel >= channel:
@@ -427,6 +499,7 @@ class SUBTITLE_OT_translate(_BaseTranscribeOperator):
                 frame_start=frame_start,
                 frame_end=frame_end,
                 channel=channel,
+                font_size=font_size,
             )
 
             if strip:
