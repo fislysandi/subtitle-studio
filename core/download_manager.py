@@ -54,7 +54,7 @@ class DownloadProgress:
 class ProgressTracker:
     """
     Custom tqdm-compatible class that captures progress from huggingface_hub.
-    
+
     huggingface_hub uses tqdm internally. By providing our own tqdm_class,
     we intercept all progress updates and forward them to our callback.
     """
@@ -80,7 +80,7 @@ class ProgressTracker:
         self.total = total or 0
         self.n = 0
         self.unit = unit
-        
+
         # Get the callback from class variable (set by DownloadManager)
         self._callback = ProgressTracker._progress_callback
         self._cancel_event_ref = ProgressTracker._cancel_event
@@ -100,6 +100,7 @@ class ProgressTracker:
     def external_write_mode(cls, file=None, nolock=False):
         """Context manager for external writes (tqdm compatibility)."""
         import contextlib
+
         return contextlib.nullcontext()
 
     @classmethod
@@ -185,7 +186,7 @@ class DownloadManager:
         """Initialize download manager."""
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self._cancel_event = threading.Event()
         self._lock = threading.Lock()
         self._progress = DownloadProgress(
@@ -219,7 +220,9 @@ class DownloadManager:
             current = self._progress
             self._progress = DownloadProgress(
                 status=kwargs.get("status", current.status),
-                bytes_downloaded=kwargs.get("bytes_downloaded", current.bytes_downloaded),
+                bytes_downloaded=kwargs.get(
+                    "bytes_downloaded", current.bytes_downloaded
+                ),
                 bytes_total=kwargs.get("bytes_total", current.bytes_total),
                 current_file=kwargs.get("current_file", current.current_file),
                 message=kwargs.get("message", current.message),
@@ -240,18 +243,18 @@ class DownloadManager:
     def is_cached(self, model_name: str) -> bool:
         """Check if model is fully downloaded (files exist and allow access)."""
         model_dir = self._get_model_dir(model_name)
-        
+
         # Check if directory exists
         if not model_dir.exists():
             return False
-            
+
         # Check for essential model files with sanity check on size
         bin_path = model_dir / "model.bin"
         config_path = model_dir / "config.json"
-        
+
         has_bin = bin_path.exists() and bin_path.stat().st_size > 1024  # > 1KB
         has_config = config_path.exists() and config_path.stat().st_size > 10
-        
+
         return has_bin and has_config
 
     def _format_size(self, bytes_val: int) -> str:
@@ -265,27 +268,29 @@ class DownloadManager:
         else:
             return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
 
-    def _progress_callback(self, downloaded: int, total: int, filename: str, elapsed: float = 0) -> None:
+    def _progress_callback(
+        self, downloaded: int, total: int, filename: str, elapsed: float = 0
+    ) -> None:
         """Callback for progress updates from ProgressTracker."""
         if self._cancel_event.is_set():
             raise InterruptedError("Download cancelled")
-        
+
         # Format nice progress message
         if total > 0:
             pct = (downloaded / total) * 100
             dl_str = self._format_size(downloaded)
             total_str = self._format_size(total)
-            
+
             # Calculate speed
             speed_str = ""
             if elapsed > 0:
                 speed = downloaded / elapsed
                 speed_str = f" - {self._format_size(int(speed))}/s"
-                
+
             message = f"{filename}: {dl_str} / {total_str} ({pct:.0f}%){speed_str}"
         else:
             message = f"Downloading {filename}..."
-            
+
         self._set_progress(
             status=DownloadStatus.DOWNLOADING,
             bytes_downloaded=downloaded,
@@ -294,14 +299,16 @@ class DownloadManager:
             message=message,
         )
 
-    def download(self, model_name: str, token: Optional[str] = None) -> DownloadProgress:
+    def download(
+        self, model_name: str, token: Optional[str] = None
+    ) -> DownloadProgress:
         """
         Download a model with progress tracking.
-        
+
         Args:
             model_name: Name of the Whisper model
             token: Optional Hugging Face token
-            
+
         Returns:
             Final progress state
         """
@@ -341,7 +348,7 @@ class DownloadManager:
             # Use local_dir to download directly to our flat folder structure
             model_dir = self._get_model_dir(model_name)
             model_dir.mkdir(parents=True, exist_ok=True)
-            
+
             snapshot_download(
                 repo_id=repo_id,
                 local_dir=str(model_dir),
@@ -367,23 +374,25 @@ class DownloadManager:
                 message="Download cancelled by user",
             )
 
-        except Exception as e:
-            error_msg = str(e)
-            if "404" in error_msg or "not found" in error_msg.lower():
-                error_msg = f"Model '{model_name}' not found on Hugging Face"
-            elif "401" in error_msg or "unauthorized" in error_msg.lower():
-                error_msg = "Authentication required. Add HF token in addon preferences."
-            
-            self._set_progress(
-                status=DownloadStatus.ERROR,
-                message=f"Error: {error_msg[:100]}",
-            )
-            
         except OSError as e:
             # Handle file system errors (like Errno 39 Directory not empty)
             self._set_progress(
                 status=DownloadStatus.ERROR,
                 message=f"File Error: {str(e)[:100]}. Try deleting the 'models' folder in the addon directory.",
+            )
+
+        except Exception as e:
+            error_msg = str(e)
+            if "404" in error_msg or "not found" in error_msg.lower():
+                error_msg = f"Model '{model_name}' not found on Hugging Face"
+            elif "401" in error_msg or "unauthorized" in error_msg.lower():
+                error_msg = (
+                    "Authentication required. Add HF token in addon preferences."
+                )
+
+            self._set_progress(
+                status=DownloadStatus.ERROR,
+                message=f"Error: {error_msg[:100]}",
             )
 
         finally:
