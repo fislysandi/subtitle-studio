@@ -6,6 +6,10 @@ Helper functions for working with Blender sequencer
 
 import bpy
 from typing import Optional, List, Any
+from types import SimpleNamespace
+
+
+_pending_sync_keys = set()
 
 
 def _get_sequence_collection(scene):
@@ -222,3 +226,64 @@ def sync_list_selection_from_sequencer(context) -> bool:
             props._updating_text = False
 
     return True
+
+
+def request_list_sync_from_selected_strip(context) -> None:
+    """Defer list/index sync so writes do not happen in panel draw context."""
+    scene = getattr(context, "scene", None)
+    if not scene:
+        return
+
+    selected = get_selected_strip(context)
+    if not selected or getattr(selected, "type", "") != "TEXT":
+        return
+
+    scene_name = scene.name
+    strip_name = selected.name
+    strip_text = selected.text
+    sync_key = (scene_name, strip_name)
+
+    if sync_key in _pending_sync_keys:
+        return
+
+    _pending_sync_keys.add(sync_key)
+
+    def _apply_sync():
+        try:
+            target_scene = bpy.data.scenes.get(scene_name)
+            if not target_scene:
+                return None
+
+            props = getattr(target_scene, "subtitle_editor", None)
+            if not props:
+                return None
+
+            items = target_scene.text_strip_items
+
+            def _find_index() -> int:
+                for i, item in enumerate(items):
+                    if item.name == strip_name:
+                        return i
+                return -1
+
+            match_index = _find_index()
+            if match_index < 0:
+                refresh_list(SimpleNamespace(scene=target_scene))
+                items = target_scene.text_strip_items
+                match_index = _find_index()
+
+            if match_index >= 0 and target_scene.text_strip_items_index != match_index:
+                target_scene.text_strip_items_index = match_index
+
+            if props.current_text != strip_text:
+                props._updating_text = True
+                try:
+                    props.current_text = strip_text
+                finally:
+                    props._updating_text = False
+
+            return None
+        finally:
+            _pending_sync_keys.discard(sync_key)
+
+    bpy.app.timers.register(_apply_sync, first_interval=0.0)

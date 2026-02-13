@@ -20,7 +20,7 @@ class SEQUENCER_PT_panel(Panel):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        sequence_utils.sync_list_selection_from_sequencer(context)
+        sequence_utils.request_list_sync_from_selected_strip(context)
         if not getattr(scene, "subtitle_editor", None):
             box = layout.box()
             box.alert = True

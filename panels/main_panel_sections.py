@@ -54,7 +54,7 @@ def draw_list_section(layout, context):
 
 def draw_edit_section(layout, context):
     scene = context.scene
-    sequence_utils.sync_list_selection_from_sequencer(context)
+    sequence_utils.request_list_sync_from_selected_strip(context)
     props = _get_props(context, "SEQUENCER_PT_panel", "edit_section")
     if not props:
         return
