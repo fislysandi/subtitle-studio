@@ -16,6 +16,7 @@ from ..core.download_manager import (
     DownloadStatus,
     create_download_manager,
 )
+from ..config import __addon_name__
 from ..utils import file_utils
 
 
@@ -69,7 +70,7 @@ class SUBTITLE_OT_download_model(Operator):
 
         # Get HF token from preferences
         token = None
-        prefs = context.preferences.addons.get("subtitle_editor")
+        prefs = context.preferences.addons.get(__addon_name__)
         if prefs and hasattr(prefs, "preferences"):
             token = getattr(prefs.preferences, "hf_token", None) or None
 
