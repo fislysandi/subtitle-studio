@@ -30,6 +30,11 @@ class _BaseTranscribeOperator(Operator):
     _success: bool = False
     _segments: Optional[List[transcriber.TranscriptionSegment]] = None
     _error_message: str = ""
+    _cancel_event: Optional[threading.Event] = None
+    _cancel_requested: bool = False
+    _was_cancelled: bool = False
+
+    _active_operator: Optional["_BaseTranscribeOperator"] = None
 
     _translate_override: Optional[bool] = None
     _start_message: str = "Starting transcription..."
@@ -68,6 +73,9 @@ class _BaseTranscribeOperator(Operator):
         self._success = False
         self._segments = None
         self._error_message = ""
+        self._cancel_event = threading.Event()
+        self._cancel_requested = False
+        self._was_cancelled = False
 
         props.is_transcribing = True
         props.progress = 0.0
@@ -75,10 +83,12 @@ class _BaseTranscribeOperator(Operator):
 
         self._thread = threading.Thread(
             target=self._transcribe_worker,
-            args=(config, self._queue),
+            args=(config, self._queue, self._cancel_event),
             daemon=True,
         )
         self._thread.start()
+
+        _BaseTranscribeOperator._active_operator = self
 
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.1, window=context.window)
@@ -88,8 +98,8 @@ class _BaseTranscribeOperator(Operator):
 
     def modal(self, context, event):
         if event.type == "ESC":
-            self._cancel(context, "Cancelled")
-            return {"CANCELLED"}
+            self._request_cancel(context, "Cancelling...")
+            return {"PASS_THROUGH"}
 
         if event.type == "TIMER":
             self._drain_queue(context)
@@ -169,12 +179,22 @@ class _BaseTranscribeOperator(Operator):
                 self._segments = msg.get("segments", [])
                 self._finished = True
                 self._success = True
+            elif msg_type == "cancelled":
+                self._error_message = ""
+                self._finished = True
+                self._success = False
+                self._was_cancelled = True
+                props.progress = 0.0
+                props.progress_text = msg.get("message", "Transcription cancelled")
 
     def _finalize(self, context):
         scene = self._get_scene(context)
         props = scene.subtitle_editor if scene else context.scene.subtitle_editor
 
-        if self._success and scene and self._segments is not None:
+        if self._was_cancelled:
+            props.progress_text = "Transcription cancelled"
+            self.report({"WARNING"}, "Transcription cancelled")
+        elif self._success and scene and self._segments is not None:
             self._create_strips(scene, self._segments, self._config or {})
             count = len(self._segments)
             props.progress_text = self._success_message(count)
@@ -197,17 +217,52 @@ class _BaseTranscribeOperator(Operator):
             context.window_manager.event_timer_remove(self._timer)
             self._timer = None
 
-    def _cancel(self, context, message: str):
+        if _BaseTranscribeOperator._active_operator is self:
+            _BaseTranscribeOperator._active_operator = None
+
+    def _request_cancel(self, context, message: str):
+        if self._cancel_requested:
+            return
+
+        self._cancel_requested = True
+        if self._cancel_event:
+            self._cancel_event.set()
+
         scene = self._get_scene(context)
         props = scene.subtitle_editor if scene else context.scene.subtitle_editor
         props.progress_text = message
-        self._cleanup(context)
+
+    @classmethod
+    def request_active_cancel(cls) -> bool:
+        active = cls._active_operator
+        if not active:
+            return False
+
+        active._cancel_requested = True
+        if active._cancel_event:
+            active._cancel_event.set()
+        return True
 
     def _refresh_list(self, scene):
         sequence_utils.refresh_list(SimpleNamespace(scene=scene))
 
-    def _transcribe_worker(self, config: Dict[str, Any], out_queue: queue.Queue):
+    def _transcribe_worker(
+        self,
+        config: Dict[str, Any],
+        out_queue: queue.Queue,
+        cancel_event: Optional[threading.Event],
+    ):
+        class _WorkerCancelled(Exception):
+            pass
+
+        def check_cancel(message: str = "Transcription cancelled"):
+            if cancel_event and cancel_event.is_set():
+                out_queue.put({"type": "cancelled", "message": message})
+                raise _WorkerCancelled()
+
         try:
+            check_cancel()
+
             tm = transcriber.TranscriptionManager(
                 model_name=config["model"],
                 device=config["device"],
@@ -227,7 +282,10 @@ class _BaseTranscribeOperator(Operator):
                 )
                 return
 
+            check_cancel()
+
             def progress_callback(progress, text):
+                check_cancel()
                 out_queue.put({"type": "progress", "progress": progress, "text": text})
 
             tm.set_progress_callback(progress_callback)
@@ -241,23 +299,27 @@ class _BaseTranscribeOperator(Operator):
                 temp_audio_path = file_utils.get_temp_filepath("audio_extract.wav")
                 audio_path = tm.extract_audio(filepath, temp_audio_path)
 
-            segments = list(
-                tm.transcribe(
-                    audio_path,
-                    language=config["language"]
-                    if config["language"] != "auto"
-                    else None,
-                    translate=config["translate"],
-                    word_timestamps=config["word_timestamps"],
-                    vad_filter=config["vad_filter"],
-                    vad_parameters=config["vad_parameters"],
-                )
-            )
+            check_cancel()
+
+            segments = []
+            for segment in tm.transcribe(
+                audio_path,
+                language=config["language"] if config["language"] != "auto" else None,
+                translate=config["translate"],
+                word_timestamps=config["word_timestamps"],
+                vad_filter=config["vad_filter"],
+                vad_parameters=config["vad_parameters"],
+            ):
+                check_cancel()
+                segments.append(segment)
 
             if temp_audio_path and os.path.exists(temp_audio_path):
                 os.remove(temp_audio_path)
 
+            check_cancel()
             out_queue.put({"type": "complete", "segments": segments})
+        except _WorkerCancelled:
+            pass
         except Exception as e:
             out_queue.put({"type": "error", "error": str(e)})
 
@@ -372,7 +434,10 @@ class SUBTITLE_OT_cancel_transcription(Operator):
 
         if props.is_transcribing:
             props.progress_text = "Cancelling..."
-            self.report({"INFO"}, "Cancelling transcription...")
+            if _BaseTranscribeOperator.request_active_cancel():
+                self.report({"INFO"}, "Cancelling transcription...")
+            else:
+                self.report({"WARNING"}, "No active transcription operator found")
         else:
             self.report({"WARNING"}, "No transcription in progress")
 
