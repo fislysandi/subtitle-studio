@@ -63,14 +63,21 @@ class SEQUENCER_PT_panel(Panel):
         # Edit section (moved from separate panel)
         layout.separator()
 
+        selected_strip = sequence_utils.get_selected_strip(context)
+        selected_item = None
+        if selected_strip and getattr(selected_strip, "type", "") == "TEXT":
+            for list_item in scene.text_strip_items:
+                if list_item.name == selected_strip.name:
+                    selected_item = list_item
+                    break
+
         # Edit selected
-        if scene.text_strip_items_index >= 0 and scene.text_strip_items:
-            item = scene.text_strip_items[scene.text_strip_items_index]
+        if selected_strip and getattr(selected_strip, "type", "") == "TEXT":
             col = layout.column()
 
             # Text editing box
             box = col.box()
-            box.label(text=f"Editing: {item.name}")
+            box.label(text=f"Editing: {selected_strip.name}")
             box.prop(scene.subtitle_editor, "current_text")
 
             # Subtitle editing tools
@@ -107,8 +114,12 @@ class SEQUENCER_PT_panel(Panel):
 
             # Timing and position
             row = box.row(align=True)
-            row.prop(item, "frame_start", text="Start")
-            row.prop(item, "frame_end", text="End")
+            if selected_item:
+                row.prop(selected_item, "frame_start", text="Start")
+                row.prop(selected_item, "frame_end", text="End")
+            else:
+                row.label(text=f"Start {selected_strip.frame_final_start}")
+                row.label(text=f"End {selected_strip.frame_final_end}")
 
             # Style
             box.prop(scene.subtitle_editor, "font_size")
@@ -126,7 +137,7 @@ class SEQUENCER_PT_panel(Panel):
             )
         else:
             box = layout.box()
-            box.label(text="Select a subtitle from the list to edit")
+            box.label(text="Select a TEXT strip in Sequencer to edit")
 
         style_box = layout.box()
         style_box.label(text="Batch Styling")

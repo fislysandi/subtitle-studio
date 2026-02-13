@@ -59,14 +59,21 @@ def draw_edit_section(layout, context):
     if not props:
         return
 
+    selected_strip = sequence_utils.get_selected_strip(context)
+    selected_item = None
+    if selected_strip and getattr(selected_strip, "type", "") == "TEXT":
+        for list_item in scene.text_strip_items:
+            if list_item.name == selected_strip.name:
+                selected_item = list_item
+                break
+
     layout.separator()
 
-    if scene.text_strip_items_index >= 0 and scene.text_strip_items:
-        item = scene.text_strip_items[scene.text_strip_items_index]
+    if selected_strip and getattr(selected_strip, "type", "") == "TEXT":
         col = layout.column()
 
         box = col.box()
-        box.label(text=f"Editing: {item.name}")
+        box.label(text=f"Editing: {selected_strip.name}")
         box.prop(props, "current_text")
 
         box = col.box()
@@ -93,8 +100,12 @@ def draw_edit_section(layout, context):
         op.direction = 1
 
         row = box.row(align=True)
-        row.prop(item, "frame_start", text="Start")
-        row.prop(item, "frame_end", text="End")
+        if selected_item:
+            row.prop(selected_item, "frame_start", text="Start")
+            row.prop(selected_item, "frame_end", text="End")
+        else:
+            row.label(text=f"Start {selected_strip.frame_final_start}")
+            row.label(text=f"End {selected_strip.frame_final_end}")
 
         box.prop(props, "font_size")
         row = box.row(align=True)
@@ -110,7 +121,7 @@ def draw_edit_section(layout, context):
         )
     else:
         box = layout.box()
-        box.label(text="Select a subtitle from the list to edit")
+        box.label(text="Select a TEXT strip in Sequencer to edit")
 
     style_box = layout.box()
     style_box.label(text="Batch Styling")
