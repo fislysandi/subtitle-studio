@@ -364,25 +364,50 @@ class SubtitleEditorProperties(PropertyGroup):
             self, "_updating_name", False
         ):
             return
-        if not context.scene:
+
+        scene = getattr(context, "scene", None) if context else None
+        if scene is None:
+            scene = getattr(self, "id_data", None)
+        if scene is None:
             return
 
-        items = getattr(context.scene, "text_strip_items", [])
-        index = getattr(context.scene, "text_strip_items_index", -1)
+        items = getattr(scene, "text_strip_items", [])
+        index = getattr(scene, "text_strip_items_index", -1)
+        sequences = sequence_utils._get_sequence_collection(scene)
+
+        target_name = None
+        target_strip = None
 
         if 0 <= index < len(items):
             item = items[index]
             item.text = self.current_text
-            current_name = item.name
+            target_name = item.name
 
-            # Also update the actual strip in the sequencer
-            sequences = sequence_utils._get_sequence_collection(context.scene)
-            if sequences:
-                for strip in sequences:
-                    if strip.name == current_name:
-                        if hasattr(strip, "text"):
-                            strip.text = self.current_text
-                        break
+        if sequences and target_name:
+            for strip in sequences:
+                if strip.name == target_name and getattr(strip, "type", "") == "TEXT":
+                    target_strip = strip
+                    break
+
+        if sequences and target_strip is None:
+            selected_text_strips = [
+                s for s in sequences if getattr(s, "select", False) and s.type == "TEXT"
+            ]
+            if selected_text_strips:
+                target_strip = selected_text_strips[0]
+            else:
+                active_strip = getattr(scene.sequence_editor, "active_strip", None)
+                if active_strip and getattr(active_strip, "type", "") == "TEXT":
+                    target_strip = active_strip
+
+        if target_strip and hasattr(target_strip, "text"):
+            target_strip.text = self.current_text
+
+            # Keep list entry in sync even when text was changed directly via RNA path.
+            for item in items:
+                if item.name == target_strip.name:
+                    item.text = self.current_text
+                    break
 
         screen = getattr(context, "screen", None)
         if screen:
