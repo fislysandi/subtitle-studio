@@ -389,10 +389,16 @@ class _BaseTranscribeOperator(Operator):
                         0.05,
                         "Separating vocals (high-quality mode)...",
                     )
-                    separation_audio_path, separation_output_dir = tm.separate_vocals(
-                        audio_path
-                    )
-                    audio_path = separation_audio_path
+                    try:
+                        separation_audio_path, separation_output_dir = (
+                            tm.separate_vocals(audio_path)
+                        )
+                        audio_path = separation_audio_path
+                    except Exception as sep_error:
+                        progress_callback(
+                            0.07,
+                            f"Vocal separation unavailable, continuing without prepass ({sep_error})",
+                        )
 
                 check_cancel()
 
