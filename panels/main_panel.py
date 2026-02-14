@@ -336,6 +336,7 @@ class SEQUENCER_PT_whisper_panel(Panel):
                 vad_col.prop(props, "max_speech_duration_s")
                 vad_col.prop(props, "speech_pad_ms")
                 vad_col.prop(props, "vad_retry_on_low_recall")
+                vad_col.prop(props, "vocal_separation_prepass")
                 vad_col.separator()
 
             adv_box.prop(props, "beam_size")

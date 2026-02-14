@@ -355,6 +355,12 @@ class SubtitleEditorProperties(PropertyGroup):
         default=True,
     )
 
+    vocal_separation_prepass: BoolProperty(
+        name="Vocal Separation Prepass",
+        description="Run vocal/source separation before transcription for better speech recall in music-heavy audio",
+        default=False,
+    )
+
     # UI State
     show_advanced: BoolProperty(
         name="Show Advanced Options",

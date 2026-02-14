@@ -178,6 +178,7 @@ class SUBTITLE_OT_download_dependencies(Operator):
             "faster-whisper",
             "pysubs2>=1.8.0",
             "onnxruntime>=1.24.1",
+            "demucs>=4.0.1",
         ]
 
         addon_prefs = context.preferences.addons[__addon_name__].preferences

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import wave
 import ctypes
+import subprocess
 from pathlib import Path
 from typing import Iterator, List, Dict, Optional, Callable, Any
 from dataclasses import dataclass
@@ -386,8 +387,6 @@ class TranscriptionManager:
 
         try:
             # Try ffmpeg first
-            import subprocess
-
             result = subprocess.run(
                 [
                     "ffmpeg",
@@ -426,3 +425,42 @@ class TranscriptionManager:
                 raise RuntimeError(
                     "Neither ffmpeg nor pydub available for audio extraction"
                 )
+
+    @staticmethod
+    def separate_vocals(audio_path: str) -> tuple[str, str]:
+        """Run Demucs vocal separation and return (vocals_path, temp_output_dir)."""
+        output_dir = tempfile.mkdtemp(prefix="subtitle_demucs_")
+        model_name = "htdemucs_ft"
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "demucs.separate",
+            "--two-stems",
+            "vocals",
+            "-n",
+            model_name,
+            "-o",
+            output_dir,
+            audio_path,
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            if "No module named demucs" in stderr:
+                raise RuntimeError(
+                    "Vocal separation requires Demucs. Install 'demucs' first."
+                )
+            raise RuntimeError(f"Vocal separation failed: {stderr or 'unknown error'}")
+
+        input_stem = Path(audio_path).stem
+        expected = Path(output_dir) / model_name / input_stem / "vocals.wav"
+        if expected.exists():
+            return str(expected), output_dir
+
+        fallback = list(Path(output_dir).glob("**/vocals.wav"))
+        if fallback:
+            return str(fallback[0]), output_dir
+
+        raise RuntimeError("Vocal separation completed but vocals.wav was not found")

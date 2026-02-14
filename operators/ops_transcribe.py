@@ -135,6 +135,7 @@ class _BaseTranscribeOperator(Operator):
                 "speech_pad_ms": props.speech_pad_ms,
             },
             "vad_retry_on_low_recall": props.vad_retry_on_low_recall,
+            "vocal_separation_prepass": props.vocal_separation_prepass,
             "subtitle_channel": props.subtitle_channel,
             "subtitle_font_size": props.subtitle_font_size,
             "max_words_per_strip": props.max_words_per_strip,
@@ -371,6 +372,7 @@ class _BaseTranscribeOperator(Operator):
             filepath = config["filepath"]
             audio_path = filepath
             temp_audio_path = None
+            separation_output_dir = None
 
             try:
                 if not filepath.lower().endswith((".wav", ".mp3", ".flac", ".m4a")):
@@ -381,6 +383,16 @@ class _BaseTranscribeOperator(Operator):
                     )
                     os.close(fd)
                     audio_path = tm.extract_audio(filepath, temp_audio_path)
+
+                if config.get("vocal_separation_prepass", False):
+                    progress_callback(
+                        0.05,
+                        "Separating vocals (high-quality mode)...",
+                    )
+                    separation_audio_path, separation_output_dir = tm.separate_vocals(
+                        audio_path
+                    )
+                    audio_path = separation_audio_path
 
                 check_cancel()
 
@@ -495,6 +507,13 @@ class _BaseTranscribeOperator(Operator):
                 if temp_audio_path and os.path.exists(temp_audio_path):
                     try:
                         os.remove(temp_audio_path)
+                    except OSError:
+                        pass
+                if separation_output_dir and os.path.exists(separation_output_dir):
+                    import shutil
+
+                    try:
+                        shutil.rmtree(separation_output_dir)
                     except OSError:
                         pass
         except _WorkerCancelled:
