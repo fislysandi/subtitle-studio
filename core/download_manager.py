@@ -4,16 +4,18 @@ Implements real progress tracking using custom tqdm class.
 """
 
 import os
+import shutil
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
-from typing import Optional, Dict, Callable
+from typing import Optional, Dict, Callable, Any, cast
 from dataclasses import dataclass
 from enum import Enum
 
 try:
     from huggingface_hub import snapshot_download, hf_hub_download
-    from huggingface_hub.utils import are_progress_bars_disabled
 
     HAS_HF = True
 except ImportError:
@@ -60,7 +62,7 @@ class ProgressTracker:
     """
 
     # Class variables for communication with DownloadManager
-    _progress_callback: Optional[Callable[[int, int, str], None]] = None
+    _progress_callback: Optional[Callable[[int, int, str, float], None]] = None
     _cancel_event: Optional[threading.Event] = None
     _lock = threading.RLock()  # Class-level lock for tqdm compatibility
 
@@ -181,6 +183,10 @@ class DownloadManager:
         "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
         "turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
     }
+    REACHABILITY_URLS = (
+        "https://huggingface.co/",
+        "https://cdn-lfs.huggingface.co/",
+    )
 
     def __init__(self, cache_dir: str):
         """Initialize download manager."""
@@ -239,6 +245,54 @@ class DownloadManager:
         if model_name not in self.REPO_MAP:
             raise ValueError(f"Unknown model: {model_name}")
         return self.REPO_MAP[model_name]
+
+    def _clear_model_dir(self, model_dir: Path) -> None:
+        if model_dir.exists():
+            shutil.rmtree(model_dir)
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+    def _should_retry_after_file_error(self, err: OSError) -> bool:
+        text = str(err).lower()
+        return (
+            "snapshot" in text
+            or "not found in cached repo" in text
+            or "cannot find" in text
+            or "directory not empty" in text
+        )
+
+    def _download_snapshot(
+        self,
+        repo_id: str,
+        model_dir: Path,
+        token: Optional[str],
+        force_download: bool = False,
+    ) -> None:
+        if snapshot_download is None:
+            raise RuntimeError("huggingface_hub snapshot_download unavailable")
+        download_fn = cast(Any, snapshot_download)
+        download_fn(
+            repo_id=repo_id,
+            local_dir=str(model_dir),
+            token=token,
+            force_download=force_download,
+            tqdm_class=ProgressTracker,
+        )
+
+    def _is_endpoint_reachable(self, url: str, timeout: float) -> bool:
+        request = urllib.request.Request(url, method="HEAD")
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return int(getattr(response, "status", 200)) < 500
+        except urllib.error.HTTPError as err:
+            return err.code in {401, 403, 404, 405}
+        except Exception:
+            return False
+
+    def _has_hf_reachability(self, timeout: float = 4.0) -> bool:
+        for url in self.REACHABILITY_URLS:
+            if self._is_endpoint_reachable(url, timeout):
+                return True
+        return False
 
     def is_cached(self, model_name: str) -> bool:
         """Check if model is fully downloaded (files exist and allow access)."""
@@ -345,7 +399,18 @@ class DownloadManager:
             message=f"Preparing to download '{model_name}'...",
         )
 
+        if not self._has_hf_reachability():
+            self._set_progress(
+                status=DownloadStatus.ERROR,
+                message=(
+                    "Network Error: cannot reach Hugging Face download servers. "
+                    "Check internet, DNS, firewall, or proxy settings and retry."
+                ),
+            )
+            return self.get_progress()
+
         repo_id = self._get_repo_id(model_name)
+        model_dir = self._get_model_dir(model_name)
 
         try:
             # Set up ProgressTracker class variables for callback
@@ -353,16 +418,9 @@ class DownloadManager:
             ProgressTracker._cancel_event = self._cancel_event
 
             # Use local_dir to download directly to our flat folder structure
-            model_dir = self._get_model_dir(model_name)
             model_dir.mkdir(parents=True, exist_ok=True)
 
-            snapshot_download(
-                repo_id=repo_id,
-                local_dir=str(model_dir),
-                token=token,
-                resume_download=None,  # Not needed with local_dir usually, but safe to omit
-                tqdm_class=ProgressTracker,
-            )
+            self._download_snapshot(repo_id, model_dir, token)
 
             if self._cancel_event.is_set():
                 return self.get_progress()
@@ -382,11 +440,37 @@ class DownloadManager:
             )
 
         except OSError as e:
-            # Handle file system errors (like Errno 39 Directory not empty)
-            self._set_progress(
-                status=DownloadStatus.ERROR,
-                message=f"File Error: {str(e)[:100]}. Try deleting the 'models' folder in the addon directory.",
-            )
+            if self._should_retry_after_file_error(e):
+                try:
+                    self._set_progress(
+                        status=DownloadStatus.CHECKING,
+                        message="Detected corrupted model cache. Repairing and retrying download...",
+                    )
+                    self._clear_model_dir(model_dir)
+                    self._download_snapshot(
+                        repo_id, model_dir, token, force_download=True
+                    )
+
+                    if self._cancel_event.is_set():
+                        return self.get_progress()
+
+                    self._set_progress(
+                        status=DownloadStatus.COMPLETE,
+                        bytes_downloaded=100,
+                        bytes_total=100,
+                        message=f"Model '{model_name}' downloaded successfully after auto-repair!",
+                    )
+                    return self.get_progress()
+                except Exception as retry_error:
+                    self._set_progress(
+                        status=DownloadStatus.ERROR,
+                        message=f"File Error after auto-repair: {str(retry_error)}",
+                    )
+            else:
+                self._set_progress(
+                    status=DownloadStatus.ERROR,
+                    message=f"File Error: {str(e)}",
+                )
 
         except Exception as e:
             error_msg = str(e)

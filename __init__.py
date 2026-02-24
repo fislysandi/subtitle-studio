@@ -84,7 +84,7 @@ bl_info = {
 # Addon Properties
 # =============================================================================
 
-from .utils import sequence_utils
+from .utils import sequence_utils, file_utils
 
 # Properties are registered via this dict (framework convention)
 # Don't define your own property group class in this file - import from props.py
@@ -139,6 +139,21 @@ def unregister():
 
     # Unregister classes
     auto_load.unregister()
+
+    is_downloading = False
+    for scene in bpy.data.scenes:
+        props = getattr(scene, "subtitle_editor", None)
+        if props and getattr(props, "is_downloading_model", False):
+            is_downloading = True
+            break
+
+    if not is_downloading:
+        try:
+            file_utils.clear_models_cache()
+        except OSError as exc:
+            print(f"[Subtitle Studio] Failed to clear model cache on unregister: {exc}")
+    else:
+        print("[Subtitle Studio] Skipping model cache cleanup: download still active")
 
     # Unregister manual classes (in reverse order)
     for cls in reversed(_manual_classes):

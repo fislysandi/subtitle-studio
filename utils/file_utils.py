@@ -3,6 +3,7 @@ File Utilities
 """
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -50,3 +51,11 @@ def is_model_cached(model_name: str) -> bool:
     has_config = os.path.exists(config_path) and os.path.getsize(config_path) > 10
 
     return has_bin and has_config
+
+
+def clear_models_cache() -> None:
+    """Delete and recreate addon model cache directory."""
+    models_dir = os.path.join(get_addon_directory(), "models")
+    if os.path.isdir(models_dir):
+        shutil.rmtree(models_dir)
+    os.makedirs(models_dir, exist_ok=True)
