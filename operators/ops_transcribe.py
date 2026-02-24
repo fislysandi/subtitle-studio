@@ -66,7 +66,8 @@ class _BaseTranscribeOperator(Operator):
             self.report({"ERROR"}, error)
             return {"CANCELLED"}
 
-        config = self._build_config(scene, props, filepath)
+        strip_start_frame = int(getattr(strip, "frame_final_start", strip.frame_start))
+        config = self._build_config(scene, props, filepath, strip_start_frame)
         self._config = config
         self._scene_name = scene.name
         self._queue = queue.Queue()
@@ -114,7 +115,13 @@ class _BaseTranscribeOperator(Operator):
 
         return {"PASS_THROUGH"}
 
-    def _build_config(self, scene, props, filepath: str) -> Dict[str, Any]:
+    def _build_config(
+        self,
+        scene,
+        props,
+        filepath: str,
+        strip_start_frame: int,
+    ) -> Dict[str, Any]:
         translate = props.translate
         if self._translate_override is not None:
             translate = self._translate_override
@@ -143,6 +150,7 @@ class _BaseTranscribeOperator(Operator):
             "compute_type": props.compute_type,
             "filepath": filepath,
             "scene_name": scene.name,
+            "strip_start_frame": strip_start_frame,
         }
 
     def _validate_filepath(self, filepath: str) -> Optional[str]:
@@ -558,10 +566,11 @@ class SUBTITLE_OT_transcribe(_BaseTranscribeOperator):
         channel = config.get("subtitle_channel", 3)
         font_size = config.get("subtitle_font_size", 24)
         render_fps = config["render_fps"]
+        strip_start_frame = int(config.get("strip_start_frame", 0))
 
         for i, seg in enumerate(segments):
-            frame_start = int(seg.start * render_fps)
-            frame_end = int(seg.end * render_fps)
+            frame_start = strip_start_frame + int(seg.start * render_fps)
+            frame_end = strip_start_frame + int(seg.end * render_fps)
 
             strip = sequence_utils.create_text_strip(
                 scene,
@@ -607,10 +616,11 @@ class SUBTITLE_OT_translate(_BaseTranscribeOperator):
             channel = min(channel, 128)
 
         render_fps = config["render_fps"]
+        strip_start_frame = int(config.get("strip_start_frame", 0))
 
         for i, seg in enumerate(segments):
-            frame_start = int(seg.start * render_fps)
-            frame_end = int(seg.end * render_fps)
+            frame_start = strip_start_frame + int(seg.start * render_fps)
+            frame_end = strip_start_frame + int(seg.end * render_fps)
 
             strip = sequence_utils.create_text_strip(
                 scene,
