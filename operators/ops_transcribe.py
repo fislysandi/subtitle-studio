@@ -66,8 +66,19 @@ class _BaseTranscribeOperator(Operator):
             self.report({"ERROR"}, error)
             return {"CANCELLED"}
 
+        render_fps = scene.render.fps / (scene.render.fps_base or 1.0)
         strip_start_frame = int(getattr(strip, "frame_final_start", strip.frame_start))
-        config = self._build_config(scene, props, filepath, strip_start_frame)
+        strip_source_start_sec, strip_source_end_sec = (
+            self._get_strip_source_window_seconds(strip, render_fps)
+        )
+        config = self._build_config(
+            scene,
+            props,
+            filepath,
+            strip_start_frame,
+            strip_source_start_sec,
+            strip_source_end_sec,
+        )
         self._config = config
         self._scene_name = scene.name
         self._queue = queue.Queue()
@@ -121,6 +132,8 @@ class _BaseTranscribeOperator(Operator):
         props,
         filepath: str,
         strip_start_frame: int,
+        strip_source_start_sec: float,
+        strip_source_end_sec: float,
     ) -> Dict[str, Any]:
         translate = props.translate
         if self._translate_override is not None:
@@ -151,6 +164,8 @@ class _BaseTranscribeOperator(Operator):
             "filepath": filepath,
             "scene_name": scene.name,
             "strip_start_frame": strip_start_frame,
+            "strip_source_start_sec": strip_source_start_sec,
+            "strip_source_end_sec": strip_source_end_sec,
         }
 
     def _validate_filepath(self, filepath: str) -> Optional[str]:
@@ -210,8 +225,12 @@ class _BaseTranscribeOperator(Operator):
             props.progress_text = "Transcription cancelled"
             self.report({"WARNING"}, "Transcription cancelled")
         elif self._success and scene and self._segments is not None:
-            segments = self._split_segments_for_display(
+            trimmed_segments = self._trim_segments_to_strip_window(
                 self._segments,
+                self._config or {},
+            )
+            segments = self._split_segments_for_display(
+                trimmed_segments,
                 self._config or {},
             )
             self._create_strips(scene, segments, self._config or {})
@@ -264,6 +283,70 @@ class _BaseTranscribeOperator(Operator):
 
     def _refresh_list(self, scene):
         sequence_utils.refresh_list(SimpleNamespace(scene=scene))
+
+    def _get_strip_source_window_seconds(
+        self, strip, render_fps: float
+    ) -> tuple[float, float]:
+        source_start_frames = float(getattr(strip, "frame_offset_start", 0.0) or 0.0)
+        visible_duration_frames = float(
+            getattr(strip, "frame_final_duration", 0.0)
+            or getattr(strip, "frame_duration", 0.0)
+            or 0.0
+        )
+
+        source_start_sec = source_start_frames / max(render_fps, 0.001)
+        source_end_sec = source_start_sec + (
+            visible_duration_frames / max(render_fps, 0.001)
+        )
+        return source_start_sec, source_end_sec
+
+    def _trim_segments_to_strip_window(
+        self,
+        segments: List[transcriber.TranscriptionSegment],
+        config: Dict[str, Any],
+    ) -> List[transcriber.TranscriptionSegment]:
+        source_start_sec = float(config.get("strip_source_start_sec", 0.0) or 0.0)
+        source_end_sec = float(config.get("strip_source_end_sec", 0.0) or 0.0)
+
+        if source_end_sec <= source_start_sec:
+            return segments
+
+        output: List[transcriber.TranscriptionSegment] = []
+        for seg in segments:
+            overlap_start = max(float(seg.start), source_start_sec)
+            overlap_end = min(float(seg.end), source_end_sec)
+            if overlap_end <= overlap_start:
+                continue
+
+            words = None
+            if seg.words:
+                clipped_words = []
+                for word in seg.words:
+                    word_start = float(word.get("start", overlap_start))
+                    word_end = float(word.get("end", overlap_end))
+                    if word_end <= source_start_sec or word_start >= source_end_sec:
+                        continue
+                    clipped_words.append(
+                        {
+                            "word": word.get("word", ""),
+                            "start": max(word_start, source_start_sec)
+                            - source_start_sec,
+                            "end": min(word_end, source_end_sec) - source_start_sec,
+                        }
+                    )
+                if clipped_words:
+                    words = clipped_words
+
+            output.append(
+                transcriber.TranscriptionSegment(
+                    start=overlap_start - source_start_sec,
+                    end=overlap_end - source_start_sec,
+                    text=seg.text,
+                    words=words,
+                )
+            )
+
+        return output
 
     def _split_segments_for_display(
         self,
