@@ -682,17 +682,42 @@ class SUBTITLE_OT_copy_style_from_active(Operator):
             self.report({"WARNING"}, "Open the Sequencer to copy styles")
             return {"CANCELLED"}
 
-        active_strip = scene.sequence_editor.active_strip
-        if not active_strip or active_strip.type != "TEXT":
+        selected = [
+            strip
+            for strip in getattr(context, "selected_sequences", [])
+            if getattr(strip, "type", "") == "TEXT"
+        ]
+        if not selected:
+            selected = sequence_utils.get_selected_strips(context)
+
+        active_candidates = [
+            getattr(context, "active_sequence_strip", None),
+            getattr(context, "active_sequence", None),
+            scene.sequence_editor.active_strip,
+        ]
+
+        active_strip = None
+        for candidate in active_candidates:
+            if candidate and getattr(candidate, "type", "") == "TEXT":
+                active_strip = candidate
+                break
+
+        if active_strip is None and selected:
+            active_strip = selected[0]
+
+        if not active_strip or getattr(active_strip, "type", "") != "TEXT":
             self.report({"WARNING"}, "Select a text strip to copy from")
             return {"CANCELLED"}
 
-        selected = sequence_utils.get_selected_strips(context)
         targets = [
             strip
             for strip in selected
             if strip.type == "TEXT" and strip != active_strip
         ]
+
+        if not targets:
+            current_text_strips = sequence_utils.get_text_strips(scene)
+            targets = [strip for strip in current_text_strips if strip != active_strip]
 
         if not targets:
             self.report({"WARNING"}, "Select other text strips to receive the style")

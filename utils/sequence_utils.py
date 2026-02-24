@@ -23,7 +23,19 @@ def _get_sequence_collection(scene):
     if not scene.sequence_editor:
         return None
 
-    return scene.sequence_editor.strips
+    seq_editor = scene.sequence_editor
+    meta_stack = getattr(seq_editor, "meta_stack", None)
+    if meta_stack:
+        try:
+            current_meta = meta_stack[-1]
+        except Exception:
+            current_meta = None
+        if current_meta is not None:
+            meta_sequences = getattr(current_meta, "sequences", None)
+            if meta_sequences is not None:
+                return meta_sequences
+
+    return seq_editor.strips
 
 
 def _find_text_strip_by_name(scene, strip_name: str) -> Optional[Any]:
@@ -185,11 +197,32 @@ def resolve_edit_target_for_scene(
 
 def get_selected_strips(context) -> List[Any]:
     """Get selected TEXT strips; fallback to active TEXT strip."""
+    selected_in_context = [
+        strip
+        for strip in getattr(context, "selected_sequences", [])
+        if getattr(strip, "type", "") == "TEXT"
+    ]
+    if selected_in_context:
+        return selected_in_context
+
     sequences = _get_sequence_collection(context.scene)
     if not sequences:
         return []
 
-    selected_text = [s for s in sequences if s.select and s.type == "TEXT"]
+    selected_text: List[Any] = []
+
+    def _collect_selected_text(strips) -> None:
+        for strip in strips:
+            strip_type = getattr(strip, "type", "")
+            if strip_type == "TEXT" and getattr(strip, "select", False):
+                selected_text.append(strip)
+            elif strip_type == "META":
+                meta_sequences = getattr(strip, "sequences", None)
+                if meta_sequences:
+                    _collect_selected_text(meta_sequences)
+
+    _collect_selected_text(sequences)
+
     if selected_text:
         return selected_text
 
