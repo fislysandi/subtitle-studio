@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Optional, Dict, Callable, Any, cast
+from typing import Optional, Dict, Callable, Any, Type, cast
 from dataclasses import dataclass
 from enum import Enum
 
@@ -61,9 +61,6 @@ class ProgressTracker:
     we intercept all progress updates and forward them to our callback.
     """
 
-    # Class variables for communication with DownloadManager
-    _progress_callback: Optional[Callable[[int, int, str, float], None]] = None
-    _cancel_event: Optional[threading.Event] = None
     _lock = threading.RLock()  # Class-level lock for tqdm compatibility
 
     def __init__(
@@ -74,6 +71,8 @@ class ProgressTracker:
         unit: str = "B",
         unit_scale: bool = True,
         unit_divisor: int = 1024,
+        progress_callback: Optional[Callable[[int, int, str, float], None]] = None,
+        cancel_event: Optional[threading.Event] = None,
         **kwargs,
     ):
         """Initialize the progress tracker."""
@@ -83,9 +82,8 @@ class ProgressTracker:
         self.n = 0
         self.unit = unit
 
-        # Get the callback from class variable (set by DownloadManager)
-        self._callback = ProgressTracker._progress_callback
-        self._cancel_event_ref = ProgressTracker._cancel_event
+        self._callback = progress_callback
+        self._cancel_event_ref = cancel_event
         self.start_time = time.time()
 
     @classmethod
@@ -153,6 +151,24 @@ class ProgressTracker:
     def format_dict(self):
         """Return format dict for compatibility."""
         return {"n": self.n, "total": self.total}
+
+
+def create_progress_tracker_class(
+    progress_callback: Optional[Callable[[int, int, str, float], None]],
+    cancel_event: Optional[threading.Event],
+) -> Type[ProgressTracker]:
+    """Create a ProgressTracker class bound to explicit callback state."""
+
+    class _BoundProgressTracker(ProgressTracker):
+        def __init__(self, *args, **kwargs):
+            super().__init__(
+                *args,
+                progress_callback=progress_callback,
+                cancel_event=cancel_event,
+                **kwargs,
+            )
+
+    return _BoundProgressTracker
 
 
 class DownloadManager:
@@ -265,6 +281,7 @@ class DownloadManager:
         repo_id: str,
         model_dir: Path,
         token: Optional[str],
+        tracker_class: Type[ProgressTracker],
         force_download: bool = False,
     ) -> None:
         if snapshot_download is None:
@@ -275,7 +292,7 @@ class DownloadManager:
             local_dir=str(model_dir),
             token=token,
             force_download=force_download,
-            tqdm_class=ProgressTracker,
+            tqdm_class=tracker_class,
         )
 
     def _is_endpoint_reachable(self, url: str, timeout: float) -> bool:
@@ -411,16 +428,16 @@ class DownloadManager:
 
         repo_id = self._get_repo_id(model_name)
         model_dir = self._get_model_dir(model_name)
+        tracker_class = create_progress_tracker_class(
+            self._progress_callback,
+            self._cancel_event,
+        )
 
         try:
-            # Set up ProgressTracker class variables for callback
-            ProgressTracker._progress_callback = self._progress_callback
-            ProgressTracker._cancel_event = self._cancel_event
-
             # Use local_dir to download directly to our flat folder structure
             model_dir.mkdir(parents=True, exist_ok=True)
 
-            self._download_snapshot(repo_id, model_dir, token)
+            self._download_snapshot(repo_id, model_dir, token, tracker_class)
 
             if self._cancel_event.is_set():
                 return self.get_progress()
@@ -448,7 +465,11 @@ class DownloadManager:
                     )
                     self._clear_model_dir(model_dir)
                     self._download_snapshot(
-                        repo_id, model_dir, token, force_download=True
+                        repo_id,
+                        model_dir,
+                        token,
+                        tracker_class,
+                        force_download=True,
                     )
 
                     if self._cancel_event.is_set():
@@ -485,11 +506,6 @@ class DownloadManager:
                 status=DownloadStatus.ERROR,
                 message=f"Error: {error_msg[:100]}",
             )
-
-        finally:
-            # Clean up class variables
-            ProgressTracker._progress_callback = None
-            ProgressTracker._cancel_event = None
 
         return self.get_progress()
 
