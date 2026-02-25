@@ -54,7 +54,18 @@ def _find_text_strip_by_name(scene, strip_name: str) -> Optional[Any]:
     return None
 
 
-def get_cached_multi_selected_text_strips(context) -> List[Any]:
+def get_scope_text_strip_map(scene):
+    """Map current-scope TEXT strip names to strips."""
+    sequences = _get_sequence_collection(scene)
+    if not sequences:
+        return {}
+
+    return {
+        strip.name: strip for strip in sequences if getattr(strip, "type", "") == "TEXT"
+    }
+
+
+def get_cached_multi_selected_text_strips(context, text_by_name=None) -> List[Any]:
     scene = getattr(context, "scene", None)
     if not scene:
         return []
@@ -63,13 +74,11 @@ def get_cached_multi_selected_text_strips(context) -> List[Any]:
     if not cached_names:
         return []
 
-    sequences = _get_sequence_collection(scene)
-    if not sequences:
+    by_name = (
+        text_by_name if text_by_name is not None else get_scope_text_strip_map(scene)
+    )
+    if not by_name:
         return []
-
-    by_name = {
-        strip.name: strip for strip in sequences if getattr(strip, "type", "") == "TEXT"
-    }
 
     resolved = []
     for name in cached_names:
@@ -79,7 +88,9 @@ def get_cached_multi_selected_text_strips(context) -> List[Any]:
     return resolved
 
 
-def get_last_signature_multi_selected_text_strips(context) -> List[Any]:
+def get_last_signature_multi_selected_text_strips(
+    context, text_by_name=None
+) -> List[Any]:
     """Get last observed multi-selection from sync signature in current scope."""
     scene = getattr(context, "scene", None)
     if not scene:
@@ -93,13 +104,11 @@ def get_last_signature_multi_selected_text_strips(context) -> List[Any]:
     if len(selected_names) <= 1:
         return []
 
-    sequences = _get_sequence_collection(scene)
-    if not sequences:
+    by_name = (
+        text_by_name if text_by_name is not None else get_scope_text_strip_map(scene)
+    )
+    if not by_name:
         return []
-
-    by_name = {
-        strip.name: strip for strip in sequences if getattr(strip, "type", "") == "TEXT"
-    }
 
     resolved = []
     for name in selected_names:
@@ -109,7 +118,7 @@ def get_last_signature_multi_selected_text_strips(context) -> List[Any]:
     return resolved
 
 
-def get_panel_list_multi_selected_text_strips(scene) -> List[Any]:
+def get_panel_list_multi_selected_text_strips(scene, text_by_name=None) -> List[Any]:
     """Get multi-selection from panel list cache in current scope."""
     items = getattr(scene, "text_strip_items", None)
     if not items:
@@ -121,13 +130,11 @@ def get_panel_list_multi_selected_text_strips(scene) -> List[Any]:
     if len(selected_names) <= 1:
         return []
 
-    sequences = _get_sequence_collection(scene)
-    if not sequences:
+    by_name = (
+        text_by_name if text_by_name is not None else get_scope_text_strip_map(scene)
+    )
+    if not by_name:
         return []
-
-    by_name = {
-        strip.name: strip for strip in sequences if getattr(strip, "type", "") == "TEXT"
-    }
 
     resolved = []
     for name in selected_names:
@@ -150,15 +157,13 @@ def get_selected_text_strips_in_current_scope(scene) -> List[Any]:
     ]
 
 
-def get_selected_text_strips_from_sequencer_context(scene) -> List[Any]:
+def get_selected_text_strips_from_sequencer_context(
+    scene, text_by_name=None
+) -> List[Any]:
     """Read selected TEXT strips via SEQUENCE_EDITOR context override."""
-    sequences = _get_sequence_collection(scene)
-    if not sequences:
-        return []
-
-    by_name = {
-        strip.name: strip for strip in sequences if getattr(strip, "type", "") == "TEXT"
-    }
+    by_name = (
+        text_by_name if text_by_name is not None else get_scope_text_strip_map(scene)
+    )
     if not by_name:
         return []
 
@@ -186,7 +191,15 @@ def get_selected_text_strips_from_sequencer_context(scene) -> List[Any]:
                     region=region,
                     scene=scene,
                 ):
-                    for strip in getattr(bpy.context, "selected_sequences", []):
+                    selected_sequences = getattr(
+                        bpy.context, "selected_editable_sequences", None
+                    )
+                    if not selected_sequences:
+                        selected_sequences = getattr(
+                            bpy.context, "selected_sequences", []
+                        )
+
+                    for strip in selected_sequences:
                         if getattr(strip, "type", "") == "TEXT":
                             name = getattr(strip, "name", "")
                             if name in by_name:
@@ -194,7 +207,64 @@ def get_selected_text_strips_from_sequencer_context(scene) -> List[Any]:
             except Exception:
                 continue
 
+            if selected_names:
+                return [by_name[name] for name in sorted(selected_names)]
+
     return [by_name[name] for name in sorted(selected_names)]
+
+
+def _get_meta_children(strip):
+    children = getattr(strip, "strips", None)
+    if children is not None:
+        return children
+    return getattr(strip, "sequences", None)
+
+
+def _find_parent_collection_for_strip_name(collection, strip_name: str):
+    for strip in collection:
+        if getattr(strip, "name", "") == strip_name:
+            return collection
+
+        if getattr(strip, "type", "") != "META":
+            continue
+
+        children = _get_meta_children(strip)
+        if not children:
+            continue
+
+        parent = _find_parent_collection_for_strip_name(children, strip_name)
+        if parent is not None:
+            return parent
+
+    return None
+
+
+def get_selected_text_strips_from_active_parent(scene, active_strip) -> List[Any]:
+    """Get selected TEXT strips from the active strip's parent collection."""
+    if not scene or not active_strip:
+        return []
+
+    seq_editor = getattr(scene, "sequence_editor", None)
+    if not seq_editor:
+        return []
+
+    root = getattr(seq_editor, "strips", None)
+    if not root:
+        return []
+
+    active_name = getattr(active_strip, "name", "")
+    if not active_name:
+        return []
+
+    parent_collection = _find_parent_collection_for_strip_name(root, active_name)
+    if not parent_collection:
+        return []
+
+    return [
+        strip
+        for strip in parent_collection
+        if getattr(strip, "type", "") == "TEXT" and getattr(strip, "select", False)
+    ]
 
 
 def _find_list_item_for_strip(scene, strip_name: str):
