@@ -15,6 +15,7 @@ from bpy.types import PropertyGroup
 
 # Import language items directly
 from .constants import LANGUAGE_ITEMS
+from .core.style_plan import build_style_patch_from_props
 from .utils import file_utils, sequence_utils
 
 
@@ -883,40 +884,32 @@ class SubtitleEditorProperties(PropertyGroup):
         if not strip:
             return
 
+        style_patch = build_style_patch_from_props(self)
+
         self._updating_style = True
         try:
             try:
-                strip.font_size = self.font_size
+                strip.font_size = style_patch.font_size
             except AttributeError:
                 pass
 
             try:
-                strip.color = (
-                    self.text_color[0],
-                    self.text_color[1],
-                    self.text_color[2],
-                    1.0,
-                )
+                strip.color = style_patch.text_color_rgba
             except AttributeError:
                 pass
 
             try:
-                if self.use_outline_color:
+                if style_patch.use_outline:
                     strip.use_outline = True
-                    strip.outline_color = (
-                        self.outline_color[0],
-                        self.outline_color[1],
-                        self.outline_color[2],
-                        1.0,
-                    )
+                    strip.outline_color = style_patch.outline_color_rgba
                 else:
                     strip.use_outline = False
             except AttributeError:
                 pass
 
-            if self.v_align != "CUSTOM":
+            if style_patch.v_align != "CUSTOM":
                 try:
-                    strip.align_y = self.v_align
+                    strip.align_y = style_patch.v_align
                 except AttributeError:
                     pass
             else:
@@ -926,7 +919,7 @@ class SubtitleEditorProperties(PropertyGroup):
                     pass
 
             try:
-                strip.wrap_width = self.wrap_width
+                strip.wrap_width = style_patch.wrap_width
             except AttributeError:
                 pass
         finally:

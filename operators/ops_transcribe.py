@@ -12,6 +12,13 @@ from typing import Dict, Any, Optional, List
 from bpy.types import Operator
 
 from ..core import transcriber
+from ..core.transcribe_policy import (
+    build_relaxed_vad_parameters,
+    compute_recall_metrics,
+    is_candidate_better,
+    is_low_recall,
+    should_retry_without_vad,
+)
 from ..utils import sequence_utils, file_utils
 
 
@@ -46,7 +53,6 @@ class _BaseTranscribeOperator(Operator):
     def invoke(self, context, event):
         scene = context.scene
         props = scene.subtitle_editor
-
 
         if props.is_transcribing:
             self.report({"WARNING"}, "Transcription already in progress")
@@ -107,7 +113,6 @@ class _BaseTranscribeOperator(Operator):
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.1, window=context.window)
         wm.modal_handler_add(self)
-
 
         return {"RUNNING_MODAL"}
 
@@ -428,7 +433,6 @@ class _BaseTranscribeOperator(Operator):
         try:
             check_cancel()
 
-
             tm = transcriber.TranscriptionManager(
                 model_name=config["model"],
                 device=config["device"],
@@ -515,90 +519,45 @@ class _BaseTranscribeOperator(Operator):
                         collected.append(segment)
                     return collected
 
-                def recall_metrics(items: List[transcriber.TranscriptionSegment]):
-                    speech_duration = sum(max(0.0, s.end - s.start) for s in items)
-                    word_count = sum(len((s.text or "").split()) for s in items)
-                    return speech_duration, word_count
-
                 audio_duration = tm.get_audio_duration(audio_path)
                 segments = run_pass(config["vad_filter"], config["vad_parameters"])
 
                 if config.get("vad_filter") and config.get(
                     "vad_retry_on_low_recall", True
                 ):
-                    speech_duration, word_count = recall_metrics(segments)
-                    coverage = (
-                        speech_duration / max(audio_duration, 0.001)
-                        if audio_duration > 0
-                        else 0.0
-                    )
+                    baseline_metrics = compute_recall_metrics(segments, audio_duration)
 
-                    low_recall = audio_duration >= 45.0 and (
-                        len(segments) < 8 or word_count < 25 or coverage < 0.03
-                    )
-
-                    if low_recall:
+                    if is_low_recall(audio_duration, baseline_metrics):
                         progress_callback(
                             0.8,
                             "Low speech recall detected, retrying with relaxed VAD...",
                         )
 
-                        original = config.get("vad_parameters", {}) or {}
-                        relaxed_vad = {
-                            "threshold": max(
-                                0.18, float(original.get("threshold", 0.35)) - 0.1
-                            ),
-                            "min_speech_duration_ms": min(
-                                int(original.get("min_speech_duration_ms", 120)), 80
-                            ),
-                            "min_silence_duration_ms": min(
-                                int(original.get("min_silence_duration_ms", 700)), 350
-                            ),
-                            "max_speech_duration_s": float(
-                                original.get("max_speech_duration_s", 15.0)
-                            ),
-                            "speech_pad_ms": min(
-                                900, int(original.get("speech_pad_ms", 500)) + 200
-                            ),
-                        }
+                        relaxed_vad = build_relaxed_vad_parameters(
+                            config.get("vad_parameters", {}) or {}
+                        )
 
                         relaxed_segments = run_pass(True, relaxed_vad)
-                        relaxed_speech_duration, relaxed_word_count = recall_metrics(
-                            relaxed_segments
+                        relaxed_metrics = compute_recall_metrics(
+                            relaxed_segments,
+                            audio_duration,
                         )
 
-                        if (
-                            relaxed_word_count > word_count
-                            or relaxed_speech_duration > speech_duration
-                        ):
+                        active_metrics = baseline_metrics
+                        if is_candidate_better(active_metrics, relaxed_metrics):
                             segments = relaxed_segments
-                            speech_duration = relaxed_speech_duration
-                            word_count = relaxed_word_count
+                            active_metrics = relaxed_metrics
 
-                        relaxed_coverage = (
-                            speech_duration / max(audio_duration, 0.001)
-                            if audio_duration > 0
-                            else 0.0
-                        )
-                        still_low = audio_duration >= 45.0 and (
-                            len(segments) < 8
-                            or word_count < 25
-                            or relaxed_coverage < 0.02
-                        )
-
-                        if still_low:
+                        if should_retry_without_vad(audio_duration, active_metrics):
                             progress_callback(
                                 0.88,
                                 "Retrying without VAD to recover missed speech...",
                             )
                             no_vad_segments = run_pass(False, None)
-                            no_vad_speech_duration, no_vad_word_count = recall_metrics(
-                                no_vad_segments
+                            no_vad_metrics = compute_recall_metrics(
+                                no_vad_segments, audio_duration
                             )
-                            if (
-                                no_vad_word_count > word_count
-                                or no_vad_speech_duration > speech_duration
-                            ):
+                            if is_candidate_better(active_metrics, no_vad_metrics):
                                 segments = no_vad_segments
 
                 check_cancel()

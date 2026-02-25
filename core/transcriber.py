@@ -16,6 +16,36 @@ from typing import Iterator, List, Dict, Optional, Callable, Any
 from dataclasses import dataclass
 
 
+def build_transcribe_options(
+    *,
+    language: Optional[str],
+    translate: bool,
+    beam_size: int,
+    word_timestamps: bool,
+    vad_filter: bool,
+    vad_parameters: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Build deterministic Faster-Whisper option payload."""
+    options: Dict[str, Any] = {
+        "word_timestamps": word_timestamps,
+        "vad_filter": vad_filter,
+    }
+
+    if beam_size and beam_size > 0:
+        options["beam_size"] = beam_size
+
+    if vad_filter and vad_parameters:
+        options["vad_parameters"] = vad_parameters
+
+    if language and language != "auto":
+        options["language"] = language
+
+    if translate:
+        options["task"] = "translate"
+
+    return options
+
+
 @dataclass
 class TranscriptionSegment:
     """Single transcription segment"""
@@ -278,24 +308,14 @@ class TranscriptionManager:
         if self.model is None:
             raise RuntimeError("Model not loaded. Call load_model() first.")
 
-
-        # Set up options
-        options: Dict[str, Any] = {
-            "word_timestamps": word_timestamps,
-            "vad_filter": vad_filter,
-        }
-
-        if beam_size and beam_size > 0:
-            options["beam_size"] = beam_size
-
-        if vad_filter and vad_parameters:
-            options["vad_parameters"] = vad_parameters
-
-        if language and language != "auto":
-            options["language"] = language
-
-        if translate:
-            options["task"] = "translate"
+        options = build_transcribe_options(
+            language=language,
+            translate=translate,
+            beam_size=beam_size,
+            word_timestamps=word_timestamps,
+            vad_filter=vad_filter,
+            vad_parameters=vad_parameters,
+        )
 
         # Transcribe
         segments, info = self.model.transcribe(audio_path, **options)

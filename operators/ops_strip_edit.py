@@ -6,6 +6,7 @@ import bpy
 import os
 from bpy.types import Operator
 
+from ..core.style_plan import build_style_patch_from_props
 from ..utils import sequence_utils
 
 
@@ -126,6 +127,45 @@ def _set_preset_data(props, preset_id: str):
     props.preset_3_shadow_color = props.outline_color
     props.preset_3_v_align = props.v_align
     props.preset_3_wrap_width = props.wrap_width
+
+
+def _apply_style_patch_to_strip(strip, style_patch) -> bool:
+    if getattr(strip, "type", "") != "TEXT":
+        return False
+
+    try:
+        strip.font_size = style_patch.font_size
+    except AttributeError:
+        pass
+
+    try:
+        strip.color = style_patch.text_color_rgba
+    except AttributeError:
+        pass
+
+    try:
+        if style_patch.use_outline:
+            strip.use_outline = True
+            strip.outline_color = style_patch.outline_color_rgba
+        else:
+            strip.use_outline = False
+    except AttributeError:
+        pass
+
+    try:
+        if style_patch.v_align == "CUSTOM":
+            strip.location = (0.5, 0.5)
+        else:
+            strip.align_y = style_patch.v_align
+    except AttributeError:
+        pass
+
+    try:
+        strip.wrap_width = style_patch.wrap_width
+    except AttributeError:
+        pass
+
+    return True
 
 
 class SUBTITLE_OT_refresh_list(Operator):
@@ -575,6 +615,7 @@ class SUBTITLE_OT_apply_style(Operator):
     def execute(self, context):
         scene = context.scene
         props = scene.subtitle_editor
+        style_patch = build_style_patch_from_props(props)
 
         # Get selected sequences
         selected = sequence_utils.get_selected_strips(context)
@@ -593,53 +634,7 @@ class SUBTITLE_OT_apply_style(Operator):
 
         count = 0
         for strip in selected:
-            if strip.type == "TEXT":
-                # Apply style
-                strip.font_size = props.font_size
-                strip.color = props.text_color + (1.0,)  # RGB + Alpha
-
-                try:
-                    strip.font_size = props.font_size
-                except AttributeError:
-                    pass
-
-                try:
-                    strip.color = (
-                        props.text_color[0],
-                        props.text_color[1],
-                        props.text_color[2],
-                        1.0,
-                    )
-                except AttributeError:
-                    pass
-
-                try:
-                    if props.use_outline_color:
-                        strip.use_outline = True
-                        strip.outline_color = (
-                            props.outline_color[0],
-                            props.outline_color[1],
-                            props.outline_color[2],
-                            1.0,
-                        )
-                    else:
-                        strip.use_outline = False
-                except AttributeError:
-                    pass
-
-                # Also alignment
-                try:
-                    if props.v_align == "TOP":
-                        strip.align_y = "TOP"
-                    elif props.v_align == "CENTER":
-                        strip.align_y = "CENTER"
-                    elif props.v_align == "BOTTOM":
-                        strip.align_y = "BOTTOM"
-                    elif props.v_align == "CUSTOM":
-                        strip.location = (0.5, 0.5)
-                except AttributeError:
-                    pass
-
+            if _apply_style_patch_to_strip(strip, style_patch):
                 count += 1
 
         self.report({"INFO"}, f"Applied style to {count} strips")
