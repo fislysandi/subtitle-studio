@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, List
 from bpy.types import Operator
 
 from ..core import transcriber
+from ..core.transcribe_runtime_policy import resolve_terminal_message_type
 from ..core.transcribe_policy import (
     build_relaxed_vad_parameters,
     compute_recall_metrics,
@@ -41,6 +42,7 @@ class _BaseTranscribeOperator(Operator):
     _cancel_event: Optional[threading.Event] = None
     _cancel_requested: bool = False
     _was_cancelled: bool = False
+    _terminal_message_type: Optional[str] = None
 
     _active_operator: Optional["_BaseTranscribeOperator"] = None
 
@@ -96,6 +98,7 @@ class _BaseTranscribeOperator(Operator):
         self._cancel_event = threading.Event()
         self._cancel_requested = False
         self._was_cancelled = False
+        self._terminal_message_type = None
 
         props.is_transcribing = True
         props.progress = 0.0
@@ -204,25 +207,39 @@ class _BaseTranscribeOperator(Operator):
 
             msg_type = msg.get("type")
             if msg_type == "progress":
+                if self._terminal_message_type:
+                    continue
                 props.progress = msg.get("progress", 0.0)
                 props.progress_text = msg.get("text", "")
-            elif msg_type == "error":
-                self._error_message = msg.get("error", "Unknown error")
-                props.progress = 0.0
-                props.progress_text = f"Error: {self._error_message}"
-                self._finished = True
-                self._success = False
-            elif msg_type == "complete":
-                self._segments = msg.get("segments", [])
-                self._finished = True
-                self._success = True
-            elif msg_type == "cancelled":
-                self._error_message = ""
-                self._finished = True
-                self._success = False
-                self._was_cancelled = True
-                props.progress = 0.0
-                props.progress_text = msg.get("message", "Transcription cancelled")
+            else:
+                resolved_terminal = resolve_terminal_message_type(
+                    self._terminal_message_type,
+                    msg_type,
+                    self._cancel_requested,
+                )
+                if not resolved_terminal:
+                    continue
+                if self._terminal_message_type:
+                    continue
+
+                self._terminal_message_type = resolved_terminal
+                if resolved_terminal == "error":
+                    self._error_message = msg.get("error", "Unknown error")
+                    props.progress = 0.0
+                    props.progress_text = f"Error: {self._error_message}"
+                    self._finished = True
+                    self._success = False
+                elif resolved_terminal == "complete":
+                    self._segments = msg.get("segments", [])
+                    self._finished = True
+                    self._success = True
+                else:
+                    self._error_message = ""
+                    self._finished = True
+                    self._success = False
+                    self._was_cancelled = True
+                    props.progress = 0.0
+                    props.progress_text = msg.get("message", "Transcription cancelled")
 
     def _finalize(self, context):
         scene = self._get_scene(context)
@@ -498,7 +515,7 @@ class _BaseTranscribeOperator(Operator):
                             tm.separate_vocals(audio_path)
                         )
                         audio_path = separation_audio_path
-                    except Exception as sep_error:
+                    except (RuntimeError, OSError) as sep_error:
                         progress_callback(
                             0.07,
                             f"Vocal separation unavailable, continuing without prepass ({sep_error})",
@@ -583,7 +600,7 @@ class _BaseTranscribeOperator(Operator):
                         pass
         except _WorkerCancelled:
             pass
-        except Exception as e:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError) as e:
             if cancel_event and cancel_event.is_set():
                 out_queue.put(
                     {"type": "cancelled", "message": "Transcription cancelled"}

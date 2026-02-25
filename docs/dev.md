@@ -48,6 +48,32 @@ Consult `docs/whisper-config.md` before tweaking default beam sizes, VAD thresho
 - Restart Blender when UI elements lag or hang, as event handlers are tied to `bpy.app.timers` for long-running downloads/transcriptions.
 - Watch the console/logs for thread-safe updates and avoid touching props from background threads (the pattern is documented in `context/project-intelligence/technical-domain.md`).
 
+## Blender Smoke Script
+
+Use the smoke script to quickly validate core strip workflows and MetaStrip copy-style behavior.
+
+Script:
+
+- `tests/blender_smoke_strip_workflows.py`
+
+What it validates:
+
+- strip add/update/remove workflow
+- apply style to selected strips
+- copy style inside a MetaStrip
+
+How to run (UI session recommended):
+
+1. Enable the `subtitle_studio` add-on.
+2. Open a Sequencer area in the current workspace.
+3. Run in Blender's Python console or Text Editor:
+
+```python
+exec(compile(open("/absolute/path/to/addons/subtitle_studio/tests/blender_smoke_strip_workflows.py", "rb").read(), "blender_smoke_strip_workflows.py", "exec"))
+```
+
+Expected output: explicit `[PASS]`/`[FAIL]` lines and an `[overall]` line.
+
 ## Evaluation Logging Standard
 
 Use a single structured format for all addon evaluation logs written to the Blender system console.

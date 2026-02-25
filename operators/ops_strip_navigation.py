@@ -145,7 +145,7 @@ class SUBTITLE_OT_nudge_strip(Operator):
                     try:
                         setattr(target_strip, attr, new_end)
                         return True
-                    except Exception:
+                    except (AttributeError, TypeError, ValueError, RuntimeError):
                         continue
             return False
 
@@ -155,7 +155,7 @@ class SUBTITLE_OT_nudge_strip(Operator):
                     try:
                         setattr(target_strip, attr, duration)
                         return True
-                    except Exception:
+                    except (AttributeError, TypeError, ValueError, RuntimeError):
                         continue
             return False
 

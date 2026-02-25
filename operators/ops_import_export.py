@@ -77,7 +77,7 @@ class SUBTITLE_OT_import_subtitles(Operator, ImportHelper):
             self.report({"INFO"}, f"Imported {len(entries)} subtitles")
             return {"FINISHED"}
 
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, RuntimeError, OSError) as e:
             fail_result = boundary_failure_from_exception(
                 "subtitle.import.execute",
                 e,
@@ -169,7 +169,7 @@ class SUBTITLE_OT_export_subtitles(Operator, ExportHelper):
             )
             return {"FINISHED"}
 
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, RuntimeError, OSError) as e:
             fail_result = boundary_failure_from_exception(
                 "subtitle.export.execute",
                 e,

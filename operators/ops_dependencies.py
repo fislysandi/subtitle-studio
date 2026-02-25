@@ -122,7 +122,7 @@ class SUBTITLE_OT_check_dependencies(Operator):
                 gpu_detected = True
 
             props.gpu_detected = gpu_detected
-        except Exception:
+        except (ImportError, AttributeError, RuntimeError):
             props.gpu_detected = False
 
         if all_installed:
@@ -260,7 +260,7 @@ class SUBTITLE_OT_check_gpu(Operator):
             props.pytorch_backend_detected = ""
             props.pytorch_backend_mismatch = False
             self.report({"WARNING"}, "PyTorch not installed - cannot check GPU")
-        except Exception:
+        except (AttributeError, RuntimeError, ValueError, OSError):
             props.gpu_detected = False
             self.report({"WARNING"}, "An unexpected error occurred while checking GPU.")
 
@@ -505,7 +505,7 @@ class SUBTITLE_OT_install_pytorch(Operator):
                 lambda: bpy.ops.subtitle.check_gpu(), first_interval=1.0
             )
 
-        except Exception as e:
+        except (RuntimeError, OSError, ValueError, AttributeError, TypeError) as e:
             _schedule_scene_update(
                 scene_name,
                 lambda props: setattr(
