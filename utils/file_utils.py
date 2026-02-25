@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 
 def get_addon_directory() -> str:
@@ -13,18 +14,26 @@ def get_addon_directory() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def resolve_models_dir(addon_directory: Optional[str] = None) -> str:
+    """Resolve models directory path without mutating filesystem."""
+    base_dir = addon_directory or get_addon_directory()
+    return os.path.join(base_dir, "models")
+
+
+def resolve_temp_dir(base_temp_dir: Optional[str] = None) -> str:
+    """Resolve addon temp directory path without mutating filesystem."""
+    root = base_temp_dir or tempfile.gettempdir()
+    return os.path.join(root, "subtitle_editor")
+
+
 def get_addon_models_dir() -> str:
     """Get the models cache directory"""
-    models_dir = os.path.join(get_addon_directory(), "models")
-    os.makedirs(models_dir, exist_ok=True)
-    return models_dir
+    return ensure_dir(resolve_models_dir())
 
 
 def get_temp_dir() -> str:
     """Get temporary directory for the addon"""
-    temp_dir = os.path.join(tempfile.gettempdir(), "subtitle_editor")
-    os.makedirs(temp_dir, exist_ok=True)
-    return temp_dir
+    return ensure_dir(resolve_temp_dir())
 
 
 def get_temp_filepath(filename: str) -> str:
@@ -55,7 +64,7 @@ def is_model_cached(model_name: str) -> bool:
 
 def clear_models_cache() -> None:
     """Delete and recreate addon model cache directory."""
-    models_dir = os.path.join(get_addon_directory(), "models")
+    models_dir = resolve_models_dir()
     if os.path.isdir(models_dir):
         shutil.rmtree(models_dir)
     os.makedirs(models_dir, exist_ok=True)
